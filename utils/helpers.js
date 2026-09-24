@@ -221,6 +221,47 @@ function normalizeLanguageQuality(qualityStr) {
   return [...new Set(tags)].map(t => t.trim()).filter(t => t.length > 0).join(" • ");
 }
 
+/**
+ * DoramasYT publica 2 variantes por título: Sub Español y Latino.
+ * El idioma va en el slug de la ficha (/dorama/...-latino-sub-espanol o ...-sub-espanol)
+ * y en el título ("Hotel del Luna Latino"). Las URLs /ver/ no lo traen:
+ * hay que mirar el link de serie en la página del episodio.
+ * @returns {"Latino"|"Sub Español"|""}
+ */
+function detectDoramasYTLang(url = "", title = "", html = "") {
+  const t = String(title || "");
+  const u = String(url || "").toLowerCase();
+  const isLatinoSlug = (s) => /-latino(-|\/|$)/.test(s) || s.includes("-latino-sub-espanol");
+  const isSubSlug = (s) => s.includes("-sub-espanol") || s.includes("-sub-espa");
+
+  // Título marcado como variante latino ("... Latino", "Latino (...)")
+  if (/(?:^|[\s(])Latino(?:$|[\s).,!?:])/i.test(t)) return "Latino";
+
+  // Slug de la ficha en la URL pedida
+  if (isLatinoSlug(u)) return "Latino";
+  if (isSubSlug(u)) return "Sub Español";
+
+  // Página de episodio /ver/: usar el link canónico de la ficha (serie)
+  if (html) {
+    const m = String(html).match(/doramasyt\.com\/dorama\/([^"'?\s\\]+)/i);
+    if (m) {
+      const seriesSlug = m[1].toLowerCase();
+      if (isLatinoSlug(seriesSlug)) return "Latino";
+      if (isSubSlug(seriesSlug)) return "Sub Español";
+    }
+    const seriesHref = String(html).match(/href="(https?:\/\/www\.doramasyt\.com\/dorama\/[^"]+)"/i);
+    if (seriesHref) {
+      const su = seriesHref[1].toLowerCase();
+      if (isLatinoSlug(su)) return "Latino";
+      if (isSubSlug(su)) return "Sub Español";
+    }
+  }
+
+  if (/-sub-espanol/.test(u) || /sub[- ]?espa[ñn]ol/i.test(t)) return "Sub Español";
+  if (u.includes("doramasyt.com")) return "Sub Español";
+  return "";
+}
+
 module.exports = {
   normalizeStr,
   cleanTitle,
@@ -236,4 +277,5 @@ module.exports = {
   isReleasedAnime,
   buildFranchiseMap,
   normalizeLanguageQuality,
+  detectDoramasYTLang,
 };

@@ -4,6 +4,7 @@ const cheerio = require("cheerio");
 const { getTMDBKey, TMDB_API_KEY } = require("../utils/config");
 const { fetchTmdbSeasonEpisodes } = require("../utils/tmdb-season");
 const { isGenericEpisodeName, splitSyl, cleanTMDBTitle } = require("../utils/title-utils");
+const { detectDoramasYTLang } = require("../utils/helpers");
 
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -570,7 +571,9 @@ async function getEpisodes(url, source, options = {}) {
 
         episodes.sort((a, b) => a.season - b.season || a.number - b.number);
         if (episodes.length > 0) {
-          result = { source, url, slug, total: episodes.length, episodes };
+          const pageTitle = (pageHtml.match(/<title>([^<]+)/) || [])[1] || "";
+          const language = detectDoramasYTLang(url, pageTitle, pageHtml) || "Sub Español";
+          result = { source, url, slug, total: episodes.length, episodes, language };
         } else {
           result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
         }

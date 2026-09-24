@@ -10,6 +10,7 @@
 
 // Headers que imitan un navegador real (evita bloqueos 403)
 const cheerio = require('cheerio');
+const { detectDoramasYTLang } = require('./utils/helpers');
 const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -245,11 +246,14 @@ module.exports = [
 
           const img = $(el).find("img").first();
           const thumbnail = pickThumb(img);
+          const fullUrl = href.startsWith("http") ? href : BASE + href;
+          // DoramasYT: 2 variantes (Sub / Latino) — el idioma va en el slug y el título
+          const quality = detectDoramasYTLang(fullUrl, title) || "Sub Español";
 
           results.push({
             title,
-            url: href.startsWith("http") ? href : BASE + href,
-            quality: "Sub Español",
+            url: fullUrl,
+            quality,
             thumbnail,
           });
         });
@@ -270,10 +274,11 @@ module.exports = [
             // Sin filtro de palabras en fallback
 
             const img = $(el).find("img").first();
+            const fullUrl = href.startsWith("http") ? href : BASE + href;
             results.push({
               title,
-              url: href.startsWith("http") ? href : BASE + href,
-              quality: "Sub Español",
+              url: fullUrl,
+              quality: detectDoramasYTLang(fullUrl, title) || "Sub Español",
               thumbnail: pickThumb(img),
             });
           });

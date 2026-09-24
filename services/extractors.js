@@ -2,6 +2,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 // DESHABILITADO: fetchWithBrowser (Puppeteer) no se usa en el VPS (CPU/RAM limitados).
 const { EmbedResolverService } = require("../src/services/EmbedResolverService");
+const { detectDoramasYTLang } = require("../utils/helpers");
 
 // Resolver embeds (voe, filemoon, dood, vidhide, streamtape...) a stream
 // directo. Mismo servicio que usa el servidor de movies-series.
@@ -137,6 +138,9 @@ const extractors = {
       .map(m => ({ payload: m[1], usaApi: m[2] }))
       .filter(b => b.payload);
 
+    // Idioma de la variante (Sub / Latino) — slug de la ficha o link serie en la página
+    const pageLang = detectDoramasYTLang(url, "", data) || detectDoramasYTLang(url, "") || "Sub Español";
+
     const tracks = [];
     const seen = new Set();
 
@@ -144,11 +148,12 @@ const extractors = {
       if (!u || seen.has(u)) return;
       seen.add(u);
       tracks.push({
-        label: (name || "DoramasYT").toUpperCase(),
-        quality: "AUTO",
+        label: `${name || "DoramasYT"} ${pageLang}`.toUpperCase().trim(),
+        quality: pageLang,
         url: u,
         isEmbed: !/\.m3u8|\.mp4/i.test(u),
         headers: { Referer: BASE + "/", "User-Agent": BROWSER_HEADERS["User-Agent"] },
+        language: pageLang,
       });
     };
 
