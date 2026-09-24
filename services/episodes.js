@@ -37,6 +37,59 @@ function adjustAnimeAirDate(dateStr) {
 
 const TMDB_ENRICH_CACHE = new Map();
 const TMDB_CACHE_TTL = 60 * 60 * 1000;
+const RUNTIME_CACHE = new Map();
+const RUNTIME_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+// Gap-fill solo de runtime/duration (+tmdbId) cuando la fuente ya trae
+// título+sinopsis. No toca texto: evita reemplazar ES de la fuente por EN
+// de TMDB. Cache propia de 6h (el runtime no cambia).
+async function fillRuntimeGap(result, tmdbId, season, searchTitle) {
+  try {
+    if (!result || !Array.isArray(result.episodes) || !result.episodes.length) return result;
+    let id = tmdbId || result.tmdbId || null;
+    const needsRt = result.episodes.some(e => !e.runtime && !e.duration);
+    if (!id) {
+      if (!searchTitle || !needsRt || !getTMDBKey()) return result;
+      try { id = await resolveTMDBId(searchTitle, [], null); } catch {}
+      if (!id) return result;
+    }
+    if (!needsRt) {
+      if (!result.tmdbId) result.tmdbId = id;
+      return result;
+    }
+    const seff = result.season || season || 1;
+    const ck = `rt:${id}:${seff}`;
+    let runtimes = null;
+    const hit = RUNTIME_CACHE.get(ck);
+    if (hit && Date.now() - hit.ts < RUNTIME_CACHE_TTL) {
+      runtimes = hit.map;
+    } else {
+      const seasonsToTry = seff === 1 ? [1] : [seff, 1];
+      for (const s of seasonsToTry) {
+        try {
+          const { data } = await axios.get(`https://api.themoviedb.org/3/tv/${id}/season/${s}`, {
+            params: { api_key: getTMDBKey(), language: 'en-US' },
+            timeout: 8000,
+          });
+          const eps = data?.episodes || [];
+          if (eps.length) {
+            runtimes = new Map(eps.map(e => [Number(e.episode_number), e.runtime || null]));
+            break;
+          }
+        } catch {}
+      }
+      RUNTIME_CACHE.set(ck, { map: runtimes, ts: Date.now() });
+    }
+    result.episodes = result.episodes.map(ep => {
+      if (ep.runtime || ep.duration) return ep;
+      const rt = runtimes ? runtimes.get(Number(ep.number)) : null;
+      if (!rt) return ep;
+      return { ...ep, runtime: rt, duration: `${rt} min` };
+    });
+    if (!result.tmdbId) result.tmdbId = id;
+    return result;
+  } catch { return result; }
+}
 
 function buildTMDBThumb(path) {
   return path ? `https://image.tmdb.org/t/p/w500${path}` : null;
@@ -193,7 +246,11 @@ function applyCommunityTranslations(result, tmdbId, season) {
 
 async function enrichWithTMDB(result, tmdbId, season = 1, searchTitle = "") {
   if (!result || !result.episodes || result.episodes.length === 0 || !getTMDBKey()) return result;
-  if (result.episodes.some(e => e.title && e.description)) return result;
+  // Fuente ya trae título+sinopsis: no reemplazar texto (TMDB puede traer EN),
+  // pero sí rellenar runtime/duration/tmdbId que falten.
+  if (result.episodes.some(e => e.title && e.description)) {
+    return await fillRuntimeGap(result, tmdbId, season, searchTitle);
+  }
 
   const id = tmdbId || (result.tmdbId) || null;
   if (!id) return result;
