@@ -417,12 +417,14 @@ const extractors = {
     const pushTrack = (u, name, lang) => {
       if (!u || seen.has(u)) return;
       seen.add(u);
+      const quality = /latino|mx/i.test(lang) ? "Latino" : /sub/i.test(lang) ? "Sub Español" : "AUTO";
       tracks.push({
         label: `${name} ${lang}`.toUpperCase().trim(),
-        quality: "AUTO",
+        quality,
         url: u,
         isEmbed: !/\.m3u8|\.mp4/i.test(u),
         headers: { Referer: BASE + "/", "User-Agent": BROWSER_HEADERS["User-Agent"] },
+        ...(quality !== "AUTO" ? { language: quality } : {}),
       });
     };
 
