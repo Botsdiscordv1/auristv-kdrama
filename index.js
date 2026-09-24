@@ -471,6 +471,9 @@ app.get("/api/search/:category", async (req, res) => {
       results = await searchByCategory(q, category, { year: parseInt(year) || null });
     }
 
+    // Clonar antes de proxyar: los objetos vienen de searchCache por
+    // referencia y mutarlos anidaba el proxy en cada request.
+    results = (results || []).map(r => ({ ...r }));
     for (const r of results) {
       if (r.thumbnail) r.thumbnail = proxyImageUrl(r.thumbnail, req);
       if (r.banner) r.banner = proxyImageUrl(r.banner, req);
@@ -1036,6 +1039,16 @@ app.get("/api/proxy/video", async (req, res) => {
 
 function proxyImageUrl(rawUrl, req) {
   if (!rawUrl || typeof rawUrl !== "string" || !rawUrl.startsWith("http")) return rawUrl;
+  // Si ya es una URL de nuestro proxy, extraer la original (evita anidamiento
+  // cuando la caché devuelve resultados ya proxyados de un request anterior).
+  const marker = "/api/proxy/image?url=";
+  const markerIdx = rawUrl.indexOf(marker);
+  if (markerIdx !== -1) {
+    try {
+      const inner = decodeURIComponent(rawUrl.slice(markerIdx + marker.length));
+      if (inner.startsWith("http")) rawUrl = inner;
+    } catch {}
+  }
   try {
     const parsed = new URL(rawUrl);
     if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return rawUrl;

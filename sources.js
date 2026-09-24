@@ -57,6 +57,29 @@ function isNavLink(title) {
   if (NAV_PATTERNS.some(rx => rx.test(t))) return true;
   return false;
 }
+// ─── Imagen de tarjeta: preferir lazy-load real sobre placeholder ──
+// Los sitios usan <img src="placeholder.png" data-src="imagen-real.webp">,
+// así que data-src/data-lazy-src tienen prioridad sobre src.
+const PLACEHOLDER_IMG_RX = /(?:^|\/)(?:anime|capblank|blank|placeholder|loading|default|no[-_]?image|sin[-_]?imagen|logo|spinner|pixel|transparent|1x1|grey|gray)[-._]?(?:\d+)?\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)|^data:image/i;
+
+function isPlaceholderImg(url) {
+  return !url || PLACEHOLDER_IMG_RX.test(url);
+}
+
+function pickThumb(img) {
+  if (!img || !img.length) return "";
+  const candidates = [
+    img.attr("data-src"),
+    img.attr("data-lazy-src"),
+    img.attr("data-original"),
+    img.attr("data-cfsrc"),
+    img.attr("src"),
+  ];
+  for (const c of candidates) {
+    if (c && !isPlaceholderImg(c)) return c;
+  }
+  return "";
+}
 // ───────────────────────────────────────────────────────
 
 module.exports = [
@@ -111,8 +134,7 @@ module.exports = [
             $(el).find(".ipst__image a").first().attr("href") ||
             $(el).find("a").first().attr("href") || "";
           const img = $(el).find("img").first();
-          const thumbnail =
-            img.attr("src") || img.attr("data-src") || img.attr("data-lazy-src") || "";
+          const thumbnail = pickThumb(img);
           addResult(title, href, thumbnail);
         });
 
@@ -123,7 +145,7 @@ module.exports = [
             const title = titleEl.text().trim() || $(el).find("img").first().attr("alt") || "";
             const href = titleEl.attr("href") || $(el).find("a").first().attr("href") || "";
             const img = $(el).find("img").first();
-            const thumbnail = img.attr("src") || img.attr("data-src") || "";
+            const thumbnail = pickThumb(img);
             addResult(title, href, thumbnail);
           });
         }
@@ -135,7 +157,7 @@ module.exports = [
             const title = titleEl.text().trim() || $(el).find("h2, h3, h4").first().text().trim();
             const href = titleEl.attr("href") || $(el).find("a").first().attr("href") || "";
             const img = $(el).find("img").first();
-            const thumbnail = img.attr("src") || img.attr("data-src") || "";
+            const thumbnail = pickThumb(img);
             addResult(title, href, thumbnail);
           });
         }
@@ -147,7 +169,7 @@ module.exports = [
             const img = $(el).find("img").first();
             const title = $(el).find("h2, h3, h4").first().text().trim() ||
               img.attr("alt") || $(el).text().trim();
-            const thumbnail = img.attr("src") || img.attr("data-src") || "";
+            const thumbnail = pickThumb(img);
             if (title.length < 3) return;
             addResult(title, href, thumbnail);
           });
@@ -222,11 +244,7 @@ module.exports = [
           // Sin filtro de palabras: el buscador del sitio ya filtra por relevancia
 
           const img = $(el).find("img").first();
-          const thumbnail =
-            img.attr("src") ||
-            img.attr("data-src") ||
-            img.attr("data-lazy-src") ||
-            "";
+          const thumbnail = pickThumb(img);
 
           results.push({
             title,
@@ -256,7 +274,7 @@ module.exports = [
               title,
               url: href.startsWith("http") ? href : BASE + href,
               quality: "Sub Español",
-              thumbnail: img.attr("src") || img.attr("data-src") || "",
+              thumbnail: pickThumb(img),
             });
           });
         }
@@ -487,7 +505,7 @@ module.exports = [
               title: clean,
               url: fullUrl,
               quality: "Sub Español",
-              thumbnail: img.attr("src") || img.attr("data-src") || "",
+              thumbnail: pickThumb(img),
             });
           });
 
@@ -868,7 +886,7 @@ module.exports = [
         seen.add(href);
 
         const img = $(el).find("img").first();
-        const thumbnail = img.attr("src") || img.attr("data-lazy-src") || img.attr("data-src") || "";
+        const thumbnail = pickThumb(img);
         const yearText = $(el).find(".meta .year, .year").first().text().trim().match(/(19|20)\d{2}/);
         const year = yearText ? yearText[0] : "";
         const isSerie = href.includes("/series/") || href.includes("/dorama/");
