@@ -105,6 +105,8 @@ function tracksFromCandidates(candidates, referer) {
 const extractors = {
 
   // ─── Tudorama ─────────────────────────────────────────────
+  // Los servidores NO están en el HTML: se cargan vía AJAX
+  // (action=corvus_get_servers) con lang por servidor (es=Latino, en=Sub).
   async Tudorama(url) {
     const BASE = "https://tudorama.com";
     const { data } = await axios.get(url, {
@@ -113,10 +115,71 @@ const extractors = {
     });
 
     const $ = cheerio.load(data);
-    const candidates = collectVideoCandidates($, data, url);
-    if (candidates.length === 0) throw new Error("No video URL found on Tudorama page");
+    const postId = $(".ep__dropdown").attr("data-id") || "";
+    const nonce = $(".ep__dropdown").attr("data-nonce") || "";
 
-    const tracks = tracksFromCandidates(candidates, BASE + "/");
+    const mapLang = (code, name) => {
+      const c = String(code || "").toLowerCase().trim();
+      const n = String(name || "").toLowerCase();
+      if (c === "es" || /esp[:\-]|latino|espanol|español/.test(n)) return "Latino";
+      if (c === "en" || /^sub[:\-]|subtitul|sub esp/.test(n)) return "Sub Español";
+      return null;
+    };
+
+    const tracks = [];
+    const seen = new Set();
+    const pushTrack = (u, name, lang, referer) => {
+      if (!u || seen.has(u)) return;
+      seen.add(u);
+      tracks.push({
+        label: `${name || "Tudorama"}${lang ? " " + lang : ""}`.toUpperCase().trim(),
+        quality: lang || "AUTO",
+        url: u,
+        isEmbed: !/\.m3u8|\.mp4/i.test(u),
+        headers: { Referer: referer, "User-Agent": BROWSER_HEADERS["User-Agent"] },
+        ...(lang ? { language: lang } : {}),
+      });
+    };
+
+    // 1) Servidores con idioma por servidor (AJAX corvus_get_servers)
+    if (postId && nonce) {
+      try {
+        const body = new URLSearchParams({ action: "corvus_get_servers", nonce, post_id: postId });
+        const res = await axios.post(`${BASE}/wp-admin/admin-ajax.php`, body, {
+          headers: {
+            ...BROWSER_HEADERS,
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            Referer: url,
+          },
+          timeout: 15000,
+          validateStatus: () => true,
+        });
+        let list = res.data;
+        if (typeof list === "string") {
+          try { list = JSON.parse(list); } catch (_) { list = []; }
+        }
+        if (Array.isArray(list)) {
+          for (const s of list) {
+            if (!s || !s.url || !/^https?:/i.test(s.url)) continue;
+            const lang = mapLang(s.lang, s.name) || mapLang(s.lang, s.server);
+            pushTrack(s.url, s.name || s.server || "Server", lang, url);
+          }
+        }
+      } catch (_) { /* AJAX caído: fallback a candidatos inline */ }
+    }
+
+    // 2) Fallback: candidatos inline en la página (sin idioma por servidor)
+    if (tracks.length === 0) {
+      const pageText = $("title").first().text() + " " + data;
+      let pageLang = null;
+      if (/esp\s*lat|español\s*latino|\bEspLat\b/i.test(pageText)) pageLang = "Latino";
+      else if (/sub\s*esp|subtitulado|\bSubEsp\b/i.test(pageText)) pageLang = "Sub Español";
+      const candidates = collectVideoCandidates($, data, url);
+      candidates.forEach((c, i) => pushTrack(c.url, c.label.toUpperCase(), pageLang, BASE + "/"));
+      if (tracks.length === 0) throw new Error("No video URL found on Tudorama page");
+    }
+
     return { url: tracks[0].url, headers: tracks[0].headers, tracks };
   },
 
