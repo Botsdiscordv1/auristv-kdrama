@@ -657,6 +657,57 @@ app.post(["/api/episodes/translate", "/api/episodes/save-translation"], async (r
   }
 });
 
+// ─── Traducciones comunitarias (clientes) ─────────────────────────────
+// Mismo contrato que movies/anime: el frontend traduce en vivo lo que trae
+// needsTranslation=true y lo postea aquí (cuota 100/día por usuario).
+// GET /api/episodes aplica el overlay + flag en fast y en full.
+app.post("/api/translations/community", async (req, res) => {
+  try {
+    const { tmdbId, season, episode, lang, title, overview, userId } = req.body || {};
+    const showId = parseInt(tmdbId, 10) || null;
+    const seasonNum = parseInt(season, 10) || null;
+    const epNum = parseInt(episode, 10) || null;
+    if (!showId || !seasonNum || !epNum) {
+      return sendError(res, 400, "Parameters 'tmdbId', 'season' and 'episode' are required");
+    }
+    const allowedLangs = ['es-MX', 'es', 'es-ES', 'en'];
+    const langNorm = allowedLangs.includes(lang) ? lang : null;
+    if (!langNorm) return sendError(res, 400, "Parameter 'lang' must be one of es-MX, es, es-ES, en");
+    const { CJK_RE, isGenericEpisodeName, polishTranslatedTitle } = require("./utils/title-utils");
+    const tRaw = (title && String(title).trim().slice(0, 200)) || null;
+    const o = (overview && String(overview).trim().slice(0, 2000)) || null;
+    if (!tRaw && !o) return sendError(res, 400, "At least 'title' or 'overview' is required");
+    if (langNorm.startsWith('es')) {
+      if ((tRaw && CJK_RE.test(tRaw)) || (o && CJK_RE.test(o))) {
+        return send(res, { success: false, saved: false, reason: 'CJK text rejected for es lang' });
+      }
+      if (tRaw && isGenericEpisodeName(tRaw)) {
+        return send(res, { success: false, saved: false, reason: 'Generic title rejected' });
+      }
+    }
+    const t = tRaw && langNorm.startsWith('es') ? polishTranslatedTitle(tRaw) : tRaw;
+    const { LocalDatabase } = require('./src/database/LocalDatabase');
+    const db = LocalDatabase.getDatabase();
+    const day = new Date().toISOString().slice(0, 10);
+    const rawWho = String(userId || '').trim();
+    const who = ((!rawWho || /^(guest|guest_user|anon|anonymous|null|undefined)$/i.test(rawWho)) ? String(req.ip || 'anon') : rawWho).slice(0, 64);
+    const used = db.communityQuotaGet(who, day);
+    if (used >= 100) return sendError(res, 429, 'Daily community quota exceeded (100)');
+    const existing = (db.communityKeys(showId, seasonNum) || []).find(r => Number(r.episode) === epNum && r.lang === langNorm);
+    const nextTitle = t || (existing && existing.title) || null;
+    const nextOverview = o || (existing && existing.overview) || null;
+    const isNew = !existing || (t && !existing.title) || (o && !existing.overview);
+    if (!isNew) return send(res, { success: true, saved: false, reason: 'exists' });
+    const saved = db.communitySave({ tmdbId: showId, season: seasonNum, episode: epNum, lang: langNorm, title: nextTitle, overview: nextOverview });
+    if (saved) db.communityQuotaSet(who, day, used + 1);
+    console.log(`[CommunityTranslation] +${langNorm} S${seasonNum}E${epNum} tmdb=${showId} by=${who}`);
+    send(res, { success: true, saved });
+  } catch (err) {
+    console.error(`[API] Community translation error: ${err.message}`);
+    sendError(res, 500, err.message);
+  }
+});
+
 app.get("/api/subscriptions/:userId", (req, res) => {
   const { userId } = req.params;
   const subs = notifications.getSubscriptions(userId);
@@ -699,8 +750,11 @@ app.get("/api/episodes", async (req, res) => {
     if (!url || !source) {
       return res.status(400).json({ error: "Parameters 'url' and 'source' are required" });
     }
-    console.log(`[Episodes] ${source}: ${url}${title ? ` (title: ${title})` : ""}${tmdbId ? ` (tmdbId: ${tmdbId})` : ""}`);
-    const result = await episodeService.getEpisodes(url, source, { title, fullTitle, altTitle, tmdbId: tmdbId ? parseInt(tmdbId, 10) : null, season: season ? parseInt(season, 10) : null, year: year ? parseInt(year, 10) : null });
+    // fast=1: solo episodios (salta cast/relations y el enrich TMDB). Para
+    // time-to-play; el full (sin fast) trae el resto en segundo plano.
+    const fast = req.query.fast === '1' || req.query.fast === 'true' || req.query.stream === '1';
+    console.log(`[Episodes] ${source}: ${url}${title ? ` (title: ${title})` : ""}${tmdbId ? ` (tmdbId: ${tmdbId})` : ""}${fast ? " [fast]" : ""}`);
+    const result = await episodeService.getEpisodes(url, source, { title, fullTitle, altTitle, tmdbId: tmdbId ? parseInt(tmdbId, 10) : null, season: season ? parseInt(season, 10) : null, year: year ? parseInt(year, 10) : null, fast });
     // Proxy external thumbnails
     if (result && !result.error && result.episodes) {
       console.log(`[Episodes] Returning seasonAirDate: "${result.seasonAirDate}" for "${title || result.slug}"`);

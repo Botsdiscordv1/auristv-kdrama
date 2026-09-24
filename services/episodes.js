@@ -3,7 +3,7 @@ const cheerio = require("cheerio");
 
 const { getTMDBKey, TMDB_API_KEY } = require("../utils/config");
 const { fetchTmdbSeasonEpisodes } = require("../utils/tmdb-season");
-const { isGenericEpisodeName, splitSyl, cleanTMDBTitle } = require("../utils/title-utils");
+const { isGenericEpisodeName, splitSyl, cleanTMDBTitle, CJK_RE } = require("../utils/title-utils");
 const { detectDoramasYTLang } = require("../utils/helpers");
 
 const BROWSER_UA =
@@ -124,6 +124,71 @@ async function resolveTMDBId(title, altTitles = [], year = null) {
     }
   }
   return null;
+}
+
+// Traducciones comunitarias (clientes): overlay gap-fill + flag needsTranslation.
+// Misma semántica que movies/anime: nunca pisa ES válido; rellena vacíos,
+// genéricos, CJK y EN → ES comunitario.
+function _looksSpanish(text, minLen = 20) {
+  if (!text || text.length < minLen) return false;
+  return /[áéíóúñ¿¡]|(\b(el|la|los|las|un|una|unos|unas|este|esta|estos|estas|para|con|como|pero|porque|donde|cuando|historia|mundo|vida|amor|escuela|chica|chico|héroe|villano|reino|guerra|magia|novia|amigo)\b)/i.test(text);
+}
+function _commTextLang(t, isTitle = false) {
+  if (!t || typeof t !== 'string' || !t.trim()) return 'none';
+  if (CJK_RE.test(t)) return 'cjk';
+  try { if (_looksSpanish(t, isTitle ? 0 : 20)) return 'es'; } catch {}
+  return 'other';
+}
+function _commTake(current, cands, isTitle) {
+  const cur = _commTextLang(current, isTitle);
+  if (cur === 'es' && !(isTitle && isGenericEpisodeName(current))) return { text: current, changed: false };
+  if (cur === 'none' || cur === 'cjk' || (isTitle && isGenericEpisodeName(current || ''))) {
+    for (const lang of ['es-MX', 'es', 'es-ES', 'en']) {
+      const c = cands[lang];
+      const v = isTitle ? c?.title : c?.overview;
+      if (v && typeof v === 'string' && v.trim() && !CJK_RE.test(v)) return { text: v.trim(), changed: true };
+    }
+    return { text: current, changed: false };
+  }
+  for (const lang of ['es-MX', 'es', 'es-ES']) {
+    const c = cands[lang];
+    const v = isTitle ? c?.title : c?.overview;
+    if (v && typeof v === 'string' && v.trim() && !CJK_RE.test(v)) return { text: v.trim(), changed: true };
+  }
+  return { text: current, changed: false };
+}
+function _needsTranslationFlag(title, description) {
+  if (_commTextLang(title, true) !== 'es') return true;
+  const d = description && String(description).trim() ? String(description).trim() : '';
+  if (!d || CJK_RE.test(d)) return true;
+  // Sinopsis útil no-ES (≥30 chars para que la detección sea fiable).
+  if (d.length >= 30 && _commTextLang(d) !== 'es') return true;
+  return false;
+}
+function applyCommunityTranslations(result, tmdbId, season) {
+  try {
+    if (!result || !Array.isArray(result.episodes) || !result.episodes.length) return result;
+    const seff = result.season || season || 1;
+    let rows = [];
+    try {
+      const { LocalDatabase } = require("../src/database/LocalDatabase");
+      rows = LocalDatabase.getDatabase().communityKeys(tmdbId, seff) || [];
+    } catch {}
+    const overlay = new Map();
+    for (const r of rows) {
+      const num = parseInt(r.episode, 10);
+      if (!overlay.has(num)) overlay.set(num, {});
+      overlay.get(num)[r.lang] = { title: r.title, overview: r.overview };
+    }
+    result.episodes = result.episodes.map((ep) => {
+      if (!overlay.size) return { ...ep, needsTranslation: _needsTranslationFlag(ep.title, ep.description) };
+      const cand = overlay.get(Number(ep.number)) || {};
+      const t = _commTake(ep.title, cand, true);
+      const d = _commTake(ep.description, cand, false);
+      return { ...ep, title: t.text, description: d.text, needsTranslation: _needsTranslationFlag(t.text, d.text) };
+    });
+    return result;
+  } catch { return result; }
 }
 
 async function enrichWithTMDB(result, tmdbId, season = 1, searchTitle = "") {
@@ -679,6 +744,14 @@ async function getEpisodes(url, source, options = {}) {
     let resolvedTmdbId = tmdbId;
     let resolvedSeason = season;
 
+    // En fast (time-to-play) se salta el enrich TMDB: es lo más caro del path
+    // y el player no lo necesita. El frontend pide cast/relations aparte.
+    const isFast = typeof options === "object" && !!(options.fast || options.stream);
+    if (isFast) {
+      const useId = tmdbId || result.tmdbId || null;
+      return applyCommunityTranslations({ ...result, seasonAirDate: result.seasonAirDate ?? null }, useId, targetSeason);
+    }
+
     // Priorizamos el título completo (que incluye el nombre del arco) para la resolución de TMDB
     const searchTitle = options.fullTitle || title;
 
@@ -688,9 +761,10 @@ async function getEpisodes(url, source, options = {}) {
       if (detected !== null) resolvedSeason = detected;
     }
     if (resolvedTmdbId) result = await enrichWithTMDB(result, resolvedTmdbId, resolvedSeason || 1, searchTitle);
+    else result = applyCommunityTranslations(result, null, resolvedSeason || targetSeason);
   }
 
-  return result ? { ...result, seasonAirDate: result.seasonAirDate ?? null } : result;
+  return result ? applyCommunityTranslations({ ...result, seasonAirDate: result.seasonAirDate ?? null }, resolvedTmdbId || result?.tmdbId || tmdbId || null, resolvedSeason || targetSeason) : result;
 }
 
 function clearCache() {
