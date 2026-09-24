@@ -1,7 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-const { fetchWithBrowser } = require("../utils/session-provider");
 const { getTMDBKey, TMDB_API_KEY } = require("../utils/config");
 const { fetchTmdbSeasonEpisodes } = require("../utils/tmdb-season");
 const { isGenericEpisodeName, splitSyl, cleanTMDBTitle } = require("../utils/title-utils");
@@ -657,66 +656,16 @@ async function getEpisodes(url, source, options = {}) {
       break;
     }
     case "Pandrama": {
-      try {
-        let data = null;
-        try {
-          const res = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000, validateStatus: (s) => s < 500 });
-          if (res.status === 200 && typeof res.data === "string") data = res.data;
-          else console.warn(`[Pandrama] axios status ${res.status}, falling back to browser`);
-        } catch (axiosErr) {
-          console.warn(`[Pandrama] axios failed (${axiosErr.message}), falling back to browser`);
-        }
-        // Cloudflare bloquea IPs de datacenter: usar navegador stealth y esperar bootstrapData
-        if (!data) data = await fetchWithBrowser(url, { waitForContent: "window.bootstrapData", waitTimeout: 45000 });
-        if (!data) throw new Error("No se pudo obtener la página de Pandrama");
-
-        const marker = "window.bootstrapData = ";
-        const s = data.indexOf(marker);
-        if (s < 0) throw new Error("No se encontró bootstrapData");
-        let depth = 0, i = data.indexOf("{", s), start = i, end = -1;
-        for (; i < data.length; i++) {
-          if (data[i] === "{") depth++;
-          else if (data[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
-        }
-        if (end < 0) throw new Error("bootstrapData JSON incompleto");
-        const bd = JSON.parse(data.slice(start, end + 1));
-        const tp = bd.loaders && bd.loaders.titlePage;
-        if (!tp) throw new Error("No se encontró titlePage loader");
-        const origin = new URL(url).origin;
-        const titleId = tp.title && tp.title.id;
-        const titleSlug = tp.title && tp.title.slug;
-        const epsData = (tp.episodes && (Array.isArray(tp.episodes) ? tp.episodes : tp.episodes.data)) || [];
-        const episodes = [];
-        const seen = new Set();
-        for (const ep of epsData) {
-          const epNum = parseInt(ep.episode_number, 10);
-          const seasonNum = parseInt(ep.season_number, 10) || 1;
-          if (!epNum || seen.has(seasonNum + "x" + epNum)) continue;
-          if (targetSeason && seasonNum !== targetSeason) continue;
-          seen.add(seasonNum + "x" + epNum);
-          const epUrl = titleId && titleSlug
-            ? `${origin}/titulo/${titleId}/${titleSlug}/temporada/${seasonNum}/episodio/${epNum}`
-            : null;
-          episodes.push({
-            number: epNum,
-            season: seasonNum,
-            url: epUrl || url,
-            title: ep.name || null,
-            description: ep.description || null,
-            thumbnail: ep.poster || null,
-            airDate: ep.release_date ? ep.release_date.slice(0, 10) : null,
-          });
-        }
-        episodes.sort((a, b) => a.season - b.season || a.number - b.number);
-        if (episodes.length > 0) {
-          result = { source, url, slug, total: episodes.length, episodes };
-        } else {
-          result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
-        }
-      } catch (err) {
-        console.warn(`[Pandrama] Episodes error: ${err.message}`);
-        result = { source, url, slug, total: 0, episodes: [], note: `Error: ${err.message}` };
-      }
+      // DESHABILITADO: Pandrama exige navegador (Cloudflare 403 desde IP de datacenter).
+      // No usamos Puppeteer en el VPS para no saturar CPU/RAM.
+      result = {
+        source,
+        url,
+        slug,
+        total: 0,
+        episodes: [],
+        note: "Fuente deshabilitada: Pandrama requiere navegador (no disponible en VPS por recursos limitados).",
+      };
       break;
     }
     default:

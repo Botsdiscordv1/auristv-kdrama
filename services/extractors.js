@@ -1,6 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
-const { fetchWithBrowser } = require("../utils/session-provider");
+// DESHABILITADO: fetchWithBrowser (Puppeteer) no se usa en el VPS (CPU/RAM limitados).
 const { EmbedResolverService } = require("../src/services/EmbedResolverService");
 
 // Resolver embeds (voe, filemoon, dood, vidhide, streamtape...) a stream
