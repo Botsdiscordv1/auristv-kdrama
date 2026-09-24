@@ -1,0 +1,54 @@
+class AnimeDetail {
+  constructor(data = {}) {
+    this.title = data.title || '';
+    this.romaji = data.romaji || null;
+    this.english = data.english || null;
+    this.native = data.native || null;
+    this.synonyms = data.synonyms || [];
+    this.description = data.description || '';
+    this.overview = data.overview || '';
+    this.thumbnail = data.thumbnail || null;
+    this.banner = data.banner || null;
+    this.poster = data.poster || null;
+    this.backdrop = data.backdrop || null;
+    this.genres = data.genres || [];
+    this.studios = data.studios || [];
+    this.season = data.season || null;
+    this.year = data.year || null;
+    this.format = data.format || null;
+    this.status = data.status || null;
+    this.episodes = data.episodes || null;
+    this.duration = data.duration || null;
+    this.score = data.score || null;
+    this.voteCount = data.voteCount || null;
+    this.trailer = data.trailer || null;
+    this.trailerKey = data.trailerKey || null;
+    this.relations = data.relations || [];
+    this.openingThemes = data.openingThemes || [];
+    this.endingThemes = data.endingThemes || [];
+    this.source = data.source || '';
+    this.sources = data.sources || [];
+    this.availableSources = data.availableSources || [];
+    this.malId = data.malId || null;
+    this.tmdbId = data.tmdbId || null;
+    this.seasons = data.seasons || data.seasonsCount || null;
+    this.seasonsCount = data.seasonsCount || data.seasons || null;
+    this.rating = data.rating || null;
+    this.synopsis = data.synopsis || '';
+    this.fullTitle = data.fullTitle || data.title || '';
+    this.seasonNumber = data.seasonNumber || null;
+    this.firstAirDate = data.firstAirDate || null;
+    this.seasonList = data.seasonList || [];
+    this.language = data.language || 'ja';
+    this.certification = data.certification || null;
+    this.opUrl = data.opUrl || null;
+    this.edUrl = data.edUrl || null;
+    this.opUrls = data.opUrls || [];
+    this.edUrls = data.edUrls || [];
+    this.openings = data.openings || [];
+    this.endings = data.endings || [];
+    this.themes = data.themes || [];
+  }
+}
+
+module.exports = { AnimeDetail };

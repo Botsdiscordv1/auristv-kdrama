@@ -1,0 +1,32 @@
+'use strict';
+
+const EMBED_HOSTS = ['savefiles.com', 'savefiles.top'];
+
+const EMBED_PATH_RE = /^\/e\/([a-zA-Z0-9_-]+)\/?/;
+
+const EMBED_TIMEOUT_MS = 15000;
+const STREAM_TIMEOUT_MS = 10000;
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+const HLS_CONTENT_TYPES = ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'application/vnd.apple.mpegurlaudio'];
+
+const SAVEFILES_ERROR_CODES = Object.freeze({
+  INVALID_URL: 'SAVEFILES_INVALID_URL',
+  INVALID_FILE_ID: 'SAVEFILES_INVALID_FILE_ID',
+  PAGE_FETCH_FAILED: 'SAVEFILES_PAGE_FETCH_FAILED',
+  PLAYER_PARSE_FAILED: 'SAVEFILES_PLAYER_PARSE_FAILED',
+  SOURCE_NOT_FOUND: 'SAVEFILES_SOURCE_NOT_FOUND',
+  STREAM_INVALID: 'SAVEFILES_STREAM_INVALID',
+  UNSUPPORTED_SOURCE: 'SAVEFILES_UNSUPPORTED_SOURCE',
+});
+
+module.exports = {
+  EMBED_HOSTS,
+  EMBED_PATH_RE,
+  EMBED_TIMEOUT_MS,
+  STREAM_TIMEOUT_MS,
+  USER_AGENT,
+  HLS_CONTENT_TYPES,
+  SAVEFILES_ERROR_CODES,
+};

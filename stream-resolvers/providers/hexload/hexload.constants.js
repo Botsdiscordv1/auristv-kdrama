@@ -1,0 +1,35 @@
+'use strict';
+
+const EMBED_HOSTS = ['hexload.com'];
+
+const EMBED_PATH_RE = /^\/embed-([a-zA-Z0-9_-]+)/;
+
+const DOWNLOAD_ENDPOINT = '/download';
+const DOWNLOAD_OP = 'download3';
+const DOWNLOAD_OPTS = { ajax: '1', method_free: '1', dataType: 'json' };
+
+const EMBED_TIMEOUT_MS = 15000;
+const DOWNLOAD_TIMEOUT_MS = 15000;
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+const HEXLOAD_ERROR_CODES = Object.freeze({
+  INVALID_URL: 'HEXLOAD_INVALID_URL',
+  INVALID_FILE_ID: 'HEXLOAD_INVALID_FILE_ID',
+  PAGE_FETCH_FAILED: 'HEXLOAD_PAGE_FETCH_FAILED',
+  SOURCE_NOT_FOUND: 'HEXLOAD_SOURCE_NOT_FOUND',
+  STREAM_INVALID: 'HEXLOAD_STREAM_INVALID',
+  UNSUPPORTED_SOURCE: 'HEXLOAD_UNSUPPORTED_SOURCE',
+});
+
+module.exports = {
+  EMBED_HOSTS,
+  EMBED_PATH_RE,
+  DOWNLOAD_ENDPOINT,
+  DOWNLOAD_OP,
+  DOWNLOAD_OPTS,
+  EMBED_TIMEOUT_MS,
+  DOWNLOAD_TIMEOUT_MS,
+  USER_AGENT,
+  HEXLOAD_ERROR_CODES,
+};
