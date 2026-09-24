@@ -62,7 +62,7 @@ function isNavLink(title) {
 // ─── Imagen de tarjeta: preferir lazy-load real sobre placeholder ──
 // Los sitios usan <img src="placeholder.png" data-src="imagen-real.webp">,
 // así que data-src/data-lazy-src tienen prioridad sobre src.
-const PLACEHOLDER_IMG_RX = /(?:^|\/)(?:anime|capblank|blank|placeholder|loading|default|no[-_]?image|sin[-_]?imagen|logo|spinner|pixel|transparent|1x1|grey|gray)[-._]?(?:\d+)?\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)|^data:image/i;
+const PLACEHOLDER_IMG_RX = /(?:^|\/)(?:anime|capblank|blank|placeholder|loading|default|no[-_]?image|sin[-_]?imagen|logo|spinner|pixel|transparent|1x1|grey|gray)[-._]?(?:\d+)?\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)|^data:image|\/flags\/|(?:^|\/)(?:mx|ar|es|lat|sub|latino|dub|castellano)[-._]?(?:\d+)?\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)|flag[-_]?(?:lang|icon|badge)?[-._]?(?:\d+)?\.(?:png|jpe?g|gif|webp|svg)(?:[?#]|$)/i;
 
 function isPlaceholderImg(url) {
   return !url || PLACEHOLDER_IMG_RX.test(url);
@@ -892,7 +892,9 @@ module.exports = [
         if (!title || title.length < 2) return;
         seen.add(href);
 
-        const img = $(el).find("img").first();
+        const img = $(el).find("img")
+          .filter((_, im) => !$(im).closest("[class*=flag]").length)
+          .first();
         const thumbnail = pickThumb(img);
         const yearText = $(el).find(".meta .year, .year").first().text().trim().match(/(19|20)\d{2}/);
         const year = yearText ? yearText[0] : "";
@@ -919,12 +921,13 @@ module.exports = [
           const title = $(el).find("img").attr("alt") || $(el).text().trim();
           if (!title || title.length < 3 || isNavLink(title)) return;
           const isSerie = href.includes("/series/");
+          const fimgs = $(el).find("img").filter((_, im) => !$(im).closest("[class*=flag]").length);
           results.push(annotateKindType({
             title,
             url: href.startsWith("http") ? href : BASE + href,
             year: "",
             quality: isSerie ? "Serie" : "Película",
-            thumbnail: $(el).find("img").attr("src") || "",
+            thumbnail: pickThumb(fimgs.length ? fimgs : $(el).find("img")),
             kind: isSerie ? "series" : "movie",
             category: isSerie ? "Serie" : "Película",
             mediaType: isSerie ? "tv" : "movie",
