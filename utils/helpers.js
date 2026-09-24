@@ -292,6 +292,7 @@ function annotateKindType(item = {}) {
   }
 
   return {
+    ...item,
     type: isMovie ? "Movie" : "Series",
     kind: isMovie ? "movie_dorama" : "Dorama",
     mediaType: isMovie ? "movie" : "tv",

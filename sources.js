@@ -42,6 +42,7 @@ const NAV_PATTERNS = [
 function dedupe(results) {
   const seen = new Set();
   return results.filter(r => {
+    if (!r || !r.url) return false;
     // Normalizar URL: quitar subdominios (www, www3), trailing slash y parámetros de tracking
     const key = r.url.replace(/https?:\/\/(www\d?\.)?/, "").replace(/\/+$/, "").split("?")[0].toLowerCase();
     if (seen.has(key)) return false;

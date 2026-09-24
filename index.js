@@ -43,7 +43,7 @@ const CACHE_TTL = 10 * 60 * 1000;
 searchCache.clear();
 
 function cleanTitleForEnrichment(title) {
-  return title
+  return (title || "").toString()
     .replace(/\[slugs:[^\]]+\]/g, "")
     .replace(/\((TV|Pelicula|Movie|OVA|ONA|Especial|En emisión|Finalizado)\)/gi, "")
     .replace(/\b(Sub Español|Latino|Castellano|Dual|BD|HD|1080p|720p|4K|x265|HEVC)\b/gi, "")
