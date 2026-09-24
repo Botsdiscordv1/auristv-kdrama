@@ -298,6 +298,18 @@ const extractors = {
       "7286": "Dood", "958695": "Filemoon", "4721": "Prime", "1233": "Prime2",
       "1230": "Prime3", "576857": "Callistan", "1113": "PrimeFlix", "38585": "Flaswish",
     };
+    // code_flix de idiomas originales (sin doblaje) → Sub Español
+    // Solo Latino/Castellano/Subtitulado se quedan con su nombre propio.
+    const mapLangName = (raw) => {
+      const n = String(raw || "").trim();
+      if (!n) return "AUTO";
+      if (/latino|^lat$/i.test(n)) return "Latino";
+      if (/castellano/i.test(n)) return "Castellano";
+      if (/subtitulado|sub\s*esp/i.test(n)) return "Sub Español";
+      // Coreano, Japones, etc. = audio original con subtítulos en español
+      if (/coreano|japon|chin|tailand|mandar|portug|ingles|vietnam|filipin|indones/i.test(n)) return "Sub Español";
+      return n;
+    };
 
     // 3) resolver cada JWT al embed real vía Server Action de embedshortener
     const decodeCache = new Map();
@@ -345,8 +357,9 @@ const extractors = {
         const embed = await decodeToken(l.link);
         if (embed) {
           const sName = serverNames[String(l.server)] || ("S" + l.server);
-          const lName = langNames[String(l.lang)] || ("Lang" + l.lang);
-          results[i] = { embed, sName, lName };
+          const rawLang = langNames[String(l.lang)] || "";
+          const quality = mapLangName(rawLang);
+          results[i] = { embed, sName, quality, rawLang };
         }
       }
     });
@@ -357,12 +370,14 @@ const extractors = {
     results.filter(Boolean).forEach((r) => {
       if (seen.has(r.embed)) return;
       seen.add(r.embed);
+      const langLabel = r.rawLang || (r.quality !== "AUTO" ? r.quality : "");
       tracks.push({
-        label: (r.sName + " " + r.lName).toUpperCase(),
-        quality: "AUTO",
+        label: (r.sName + " " + (langLabel || r.quality)).toUpperCase().trim(),
+        quality: r.quality || "AUTO",
         url: r.embed,
         isEmbed: !/\.m3u8|\.mp4/i.test(r.embed),
         headers: { Referer: "https://primeload.co/", "User-Agent": BROWSER_HEADERS["User-Agent"] },
+        ...(r.quality && r.quality !== "AUTO" ? { language: r.quality } : {}),
       });
     });
 
