@@ -246,9 +246,10 @@ function applyCommunityTranslations(result, tmdbId, season) {
 
 async function enrichWithTMDB(result, tmdbId, season = 1, searchTitle = "") {
   if (!result || !result.episodes || result.episodes.length === 0 || !getTMDBKey()) return result;
-  // Fuente ya trae título+sinopsis: no reemplazar texto (TMDB puede traer EN),
-  // pero sí rellenar runtime/duration/tmdbId que falten.
-  if (result.episodes.some(e => e.title && e.description)) {
+  // Fuente con contenido REAL (título no genérico + sinopsis): no pisar texto,
+  // solo gap-fill de runtime. Títulos genéricos ("Episodio N") sí pasan al
+  // enrich: TMDB trae los reales + runtime y needsTranslation los traduce.
+  if (result.episodes.some(e => e.title && !isGenericEpisodeName(e.title) && e.description)) {
     return await fillRuntimeGap(result, tmdbId, season, searchTitle);
   }
 
