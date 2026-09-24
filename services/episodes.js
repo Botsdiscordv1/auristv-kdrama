@@ -666,8 +666,8 @@ async function getEpisodes(url, source, options = {}) {
         } catch (axiosErr) {
           console.warn(`[Pandrama] axios failed (${axiosErr.message}), falling back to browser`);
         }
-        // Cloudflare bloquea IPs de datacenter: usar navegador stealth
-        if (!data) data = await fetchWithBrowser(url);
+        // Cloudflare bloquea IPs de datacenter: usar navegador stealth y esperar bootstrapData
+        if (!data) data = await fetchWithBrowser(url, { waitForContent: "window.bootstrapData", waitTimeout: 45000 });
         if (!data) throw new Error("No se pudo obtener la página de Pandrama");
 
         const marker = "window.bootstrapData = ";

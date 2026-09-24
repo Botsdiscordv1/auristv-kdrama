@@ -25,8 +25,11 @@ async function getBrowser() {
 /**
  * Realiza una petición usando el navegador para saltar Cloudflare.
  * Devuelve el HTML de la página.
+ * @param {string} url
+ * @param {{ waitForContent?: string, waitTimeout?: number }} [opts]
+ *   waitForContent: marca de texto que debe aparecer en el HTML (ej. "window.bootstrapData")
  */
-async function fetchWithBrowser(url) {
+async function fetchWithBrowser(url, opts = {}) {
   const browser = await getBrowser();
   const page = await browser.newPage();
 
@@ -41,6 +44,37 @@ async function fetchWithBrowser(url) {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
+
+    // Esperar a que el contenido (reto Cloudflare + render SPA) tenga datos reales
+    const marker = opts.waitForContent;
+    const deadline = Date.now() + (opts.waitTimeout || 30000);
+    let content = '';
+    let hasMarker = false;
+
+    if (marker) {
+      while (Date.now() < deadline) {
+        content = await page.content();
+        if (content.includes(marker) && content.length > 20000) {
+          hasMarker = true;
+          break;
+        }
+        // Cloudflare Turnstile: esperar a que se resuelva
+        const cfIframe = await page.$('iframe[src*="challenges.cloudflare.com"]');
+        if (cfIframe) {
+          console.log("   - [Browser] Cloudflare Turnstile detectado, esperando...");
+          try {
+            await cfIframe.click({ delay: 100 });
+          } catch (_) {}
+        }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+      if (hasMarker) {
+        console.log("   - [Browser] Contenido con marcador detectado");
+        return content;
+      }
+      console.warn("   - [Browser] Marcador no apareció, devolviendo HTML actual");
+      return await page.content();
+    }
 
     // ESPERA INTELIGENTE MEJORADA: Terminar en cuanto haya datos
     try {
@@ -66,7 +100,7 @@ async function fetchWithBrowser(url) {
       await new Promise(r => setTimeout(r, 3000));
     }
 
-    const content = await page.content();
+    content = await page.content();
     return content;
   } catch (err) {
     console.error(`❌ [Browser] Error: ${err.message}`);
