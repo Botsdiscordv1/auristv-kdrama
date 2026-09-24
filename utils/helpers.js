@@ -262,6 +262,42 @@ function detectDoramasYTLang(url = "", title = "", html = "") {
   return "";
 }
 
+/**
+ * Normalize media kind for search/detail payloads.
+ * Returns { type: "Series"|"Movie", kind: "Dorama"|"movie_dorama" }.
+ * Accepts legacy fields (kind: series|movie, mediaType: tv|movie, quality).
+ * Defaults to Series/Dorama (this server is dorama-focused).
+ */
+function annotateKindType(item = {}) {
+  const url = (item.url || "").toLowerCase();
+  const quality = (item.quality || "").toLowerCase();
+  const kind = String(item.kind || "").toLowerCase();
+  const mediaType = String(item.mediaType || "").toLowerCase();
+  const type = String(item.type || "").toLowerCase();
+
+  let isMovie = false;
+
+  if (type === "movie" || type === "película" || type === "pelicula") {
+    isMovie = true;
+  } else if (type === "series" || type === "serie" || type === "dorama") {
+    isMovie = false;
+  } else if (kind === "movie" || kind === "movie_dorama" || mediaType === "movie") {
+    isMovie = true;
+  } else if (kind === "series" || kind === "dorama" || mediaType === "tv" || mediaType === "series") {
+    isMovie = false;
+  } else if (/\/(peliculas?|movies?)(\/|$)/.test(url) || /\b(pelicula|movie)\b/.test(quality)) {
+    isMovie = true;
+  } else if (/\/(series?|doramas?|capitulos?|episodios?|titulo)(\/|$)/.test(url) || /\b(serie|dorama)\b/.test(quality)) {
+    isMovie = false;
+  }
+
+  return {
+    type: isMovie ? "Movie" : "Series",
+    kind: isMovie ? "movie_dorama" : "Dorama",
+    mediaType: isMovie ? "movie" : "tv",
+  };
+}
+
 module.exports = {
   normalizeStr,
   cleanTitle,
@@ -278,4 +314,5 @@ module.exports = {
   buildFranchiseMap,
   normalizeLanguageQuality,
   detectDoramasYTLang,
+  annotateKindType,
 };

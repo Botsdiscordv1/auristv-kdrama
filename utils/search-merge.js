@@ -1,4 +1,4 @@
-const { extractSlug, normalizeSlug } = require('./helpers');
+const { extractSlug, normalizeSlug, annotateKindType } = require('./helpers');
 
 function normalizeText(value) {
   return (value || '')
@@ -123,8 +123,10 @@ function mergeSearchResults(results, options = {}) {
       : [{ source: item.source, url: item.url, quality: item.quality || '' }];
 
     if (!existing) {
+      const annotated = annotateKindType(item);
       merged.set(key, {
         ...item,
+        ...annotated,
         sources: itemSources.map(s => ({ source: s.source, url: s.url, quality: s.quality || '' })),
         availableSources: [...new Set(itemSources.map(s => s.source).filter(Boolean))],
         _rank: item.originalIndex ?? 9999,
@@ -140,8 +142,10 @@ function mergeSearchResults(results, options = {}) {
       if (diff > 2) {
         // Generamos una clave única para este item para que NO se fusione con el existente
         const uniqueKey = `${key}:y${item.year}`;
+        const annotatedItem = annotateKindType(item);
         merged.set(uniqueKey, {
           ...item,
+          ...annotatedItem,
           sources: itemSources.map(s => ({ source: s.source, url: s.url, quality: s.quality || '' })),
           availableSources: [...new Set(itemSources.map(s => s.source).filter(Boolean))],
           _rank: item.originalIndex ?? 9999,
@@ -174,6 +178,12 @@ function mergeSearchResults(results, options = {}) {
       existing.scrapedTitle = item.scrapedTitle;
     }
     if (item.originalIndex !== undefined) existing._rank = Math.min(existing._rank ?? item.originalIndex, item.originalIndex);
+    if (!existing.type || !existing.kind) {
+      const itemKT = annotateKindType(item);
+      if (!existing.type) existing.type = itemKT.type;
+      if (!existing.kind) existing.kind = itemKT.kind;
+      if (!existing.mediaType) existing.mediaType = itemKT.mediaType;
+    }
   }
 
   return [...merged.values()]

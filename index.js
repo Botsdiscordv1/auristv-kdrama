@@ -11,9 +11,9 @@ const {
   parseAnimeContinuation, extractFranchiseRoot, translateSeason,
   normalizeAnimeFormats, dedupeByUrl,
   isPromotionalEntry, isReleasedAnime, buildFranchiseMap,
-  normalizeLanguageQuality,
+  normalizeLanguageQuality, annotateKindType,
 } = require("./utils/helpers");
-const { fetchMovieSeriesDetail } = require("./services/anime-detail");
+const { fetchMovieSeriesDetail } = require("./services/movie-series-detail");
 const { extract: extractVideo } = require("./services/extractors");
 const { getEpisodes, clearCache: clearEpisodesCache } = require("./services/episodes");
 const notifications = require("./services/notifications");
@@ -99,7 +99,7 @@ async function searchSource(source, query, options = {}) {
   try {
     const results = await source.search(query, axios, cheerio, options);
     console.log(`[${source.name}] "${query}" → ${results.length} resultados`);
-    return results.map((r) => ({ ...r, source: source.name }));
+    return results.map((r) => ({ ...r, ...annotateKindType(r), source: source.name }));
   } catch (err) {
     console.error(`[${source.name}] ERROR en "${query}": ${err.message}`);
     return [];
@@ -290,6 +290,7 @@ async function getTrendingByCategory(category) {
         score: r.vote_average || null, genres: r.genre_ids || [],
         availableSources: ["TMDB"], sources: [{ source: "TMDB", url: "", quality: "Serie" }],
         originalIndex: 0,
+        ...annotateKindType({ type: "Series" }),
       }));
   } catch (err) {
     console.warn(`[Trending] Error: ${err.message}`);
@@ -473,7 +474,7 @@ app.get("/api/search/:category", async (req, res) => {
 
     // Clonar antes de proxyar: los objetos vienen de searchCache por
     // referencia y mutarlos anidaba el proxy en cada request.
-    results = (results || []).map(r => ({ ...r }));
+    results = (results || []).map(r => ({ ...r, ...annotateKindType(r) }));
     for (const r of results) {
       if (r.thumbnail) r.thumbnail = proxyImageUrl(r.thumbnail, req);
       if (r.banner) r.banner = proxyImageUrl(r.banner, req);
@@ -490,10 +491,12 @@ app.get("/api/search/:category", async (req, res) => {
 
 app.get("/api/detail/movie", async (req, res) => {
   try {
-    const { title, year, metadataTitle, url, quality } = req.query;
+    const { title, year, metadataTitle, url, quality, type, kind, mediaType } = req.query;
     if (!title) return sendError(res, 400, "Parameter 'title' is required");
 
-    const detail = await movieDetailService.getDetail({ title, year: parseInt(year) || null, metadataTitle, url, quality });
+    const detail = await movieDetailService.getDetail({
+      title, year: parseInt(year) || null, metadataTitle, url, quality, type, kind, mediaType,
+    });
     if (!detail) return sendError(res, 404, "No detail found");
 
     if (detail.poster) detail.poster = proxyImageUrl(detail.poster, req);
@@ -598,8 +601,7 @@ app.get("/api/related", async (req, res) => {
           backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/w1280${item.backdrop_path}` : null,
           year: (item.release_date || item.first_air_date || "").slice(0, 4) || null,
           score: item.vote_average || null,
-          kind: "series",
-          mediaType: "tv",
+          ...annotateKindType({ mediaType }),
           source: "TMDB",
         });
         if (merged.length >= maxLimit) break;

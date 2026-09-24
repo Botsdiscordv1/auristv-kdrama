@@ -10,7 +10,7 @@
 
 // Headers que imitan un navegador real (evita bloqueos 403)
 const cheerio = require('cheerio');
-const { detectDoramasYTLang } = require('./utils/helpers');
+const { detectDoramasYTLang, annotateKindType } = require('./utils/helpers');
 const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -117,7 +117,7 @@ module.exports = [
           if (/\/(category|tag|page|genero|genre|wp-content|feed)\//i.test(fullUrl)) return;
           if (seen.has(fullUrl)) return;
           seen.add(fullUrl);
-          results.push({ title, url: fullUrl, quality: "Sub Español", thumbnail });
+          results.push(annotateKindType({ title, url: fullUrl, quality: "Sub Español", thumbnail }));
         };
 
         // ── Estrategia 1: tema WStream (clases reales del HTML) ──
@@ -250,12 +250,12 @@ module.exports = [
           // DoramasYT: 2 variantes (Sub / Latino) — el idioma va en el slug y el título
           const quality = detectDoramasYTLang(fullUrl, title) || "Sub Español";
 
-          results.push({
-            title,
-            url: fullUrl,
-            quality,
-            thumbnail,
-          });
+        results.push(annotateKindType({
+          title,
+          url: fullUrl,
+          quality,
+          thumbnail,
+        }));
         });
 
         // 🔁 Fallback por links directos al catálogo
@@ -275,12 +275,13 @@ module.exports = [
 
             const img = $(el).find("img").first();
             const fullUrl = href.startsWith("http") ? href : BASE + href;
-            results.push({
-              title,
-              url: fullUrl,
-              quality: detectDoramasYTLang(fullUrl, title) || "Sub Español",
-              thumbnail: pickThumb(img),
-            });
+          results.push({
+            title,
+            url: fullUrl,
+            quality: detectDoramasYTLang(fullUrl, title) || "Sub Español",
+            thumbnail: pickThumb(img),
+            ...annotateKindType({ url: fullUrl }),
+          });
           });
         }
 
@@ -413,7 +414,7 @@ module.exports = [
               ? "peliculas" : "doramas";
             const url = slug ? `${BASE}/${section}/${slug}` : "";
             const thumbnail = item.image || item.poster || item.thumbnail || item.img || item.cover || "";
-            return { title, url, quality: "Sub Español", thumbnail };
+            return annotateKindType({ title, url, quality: "Sub Español", thumbnail });
           }).filter(r =>
             r.title && r.title.length > 1 && !/^undefined$/i.test(r.title) &&
             r.url && r.url.length > 10 && !/undefined/i.test(r.url)
@@ -474,7 +475,7 @@ module.exports = [
                       const itemUrl = `${BASE}/${section}/${slug}`;
                       if (/undefined/i.test(itemUrl)) continue;
                       const thumbnail = item.image || item.poster || item.thumbnail || item.img || item.cover || "";
-                      found.push({ title, url: itemUrl, quality: "Sub Español", thumbnail });
+                      found.push(annotateKindType({ title, url: itemUrl, quality: "Sub Español", thumbnail }));
                     }
                   }
                 } else if (obj && typeof obj === "object") {
@@ -506,12 +507,12 @@ module.exports = [
             if (isNavLink(clean)) return;
 
             const fullUrl = href.startsWith("http") ? href : BASE + href;
-            found.push({
+            found.push(annotateKindType({
               title: clean,
               url: fullUrl,
               quality: "Sub Español",
               thumbnail: pickThumb(img),
-            });
+            }));
           });
 
           return found;
@@ -544,7 +545,7 @@ module.exports = [
             $("meta[property='og:image']").attr("content") ||
             $("img.poster, .poster img").first().attr("src") || "";
 
-          return [{ title, url, quality: "Sub Español", thumbnail }];
+          return [{ ...annotateKindType({ title, url, quality: "Sub Español", thumbnail }) }];
         } catch (_) { return []; }
       };
 
@@ -635,7 +636,7 @@ module.exports = [
         const found = [];
         await Promise.all(candidateUrls.map(async (url) => {
           const title = await fetchRealTitle(url);
-          if (title) found.push({ title, url, quality: "Sub Español", thumbnail: "" });
+          if (title) found.push(annotateKindType({ title, url, quality: "Sub Español", thumbnail: "" }));
         }));
 
         return found;
@@ -686,7 +687,7 @@ module.exports = [
               ? "peliculas" : "doramas";
             const url = slug ? `${BASE}/${section}/${slug}` : "";
             const thumbnail = item.image || item.poster || item.thumbnail || item.img || item.cover || "";
-            return { title, url, quality: "Sub Español", thumbnail };
+            return annotateKindType({ title, url, quality: "Sub Español", thumbnail });
           }).filter(r =>
             r.title && r.title.length > 1 && !/^undefined$/i.test(r.title) &&
             r.url && r.url.length > 10 && !/undefined/i.test(r.url)
@@ -827,12 +828,12 @@ module.exports = [
               : item.language === "ko" ? "Sub Español • Coreano"
                 : "Sub Español";
 
-          results.push({
+          results.push(annotateKindType({
             title,
             url: titleUrl,
             quality,
             thumbnail,
-          });
+          }));
         }
 
         return results;
@@ -841,7 +842,7 @@ module.exports = [
       return searchOne(query);
     },
   },
-  // ══════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
   //  FUENTE 5 — DoramasLatinox  (doramaslatinox.com)
   //  WordPress + Dooplay. Búsqueda /?s=. Episodios en /episodio/<slug>-
   //  <SxE>/ con servidores resueltos vía doo_player_ajax (admin-ajax).
@@ -896,7 +897,7 @@ module.exports = [
         const year = yearText ? yearText[0] : "";
         const isSerie = href.includes("/series/") || href.includes("/dorama/");
 
-        results.push({
+        results.push(annotateKindType({
           title,
           url: href.startsWith("http") ? href : BASE + href,
           year,
@@ -904,8 +905,8 @@ module.exports = [
           thumbnail,
           kind: isSerie ? "series" : "movie",
           category: isSerie ? "Serie" : "Película",
-          mediaType: isSerie ? "series" : "movie",
-        });
+          mediaType: isSerie ? "tv" : "movie",
+        }));
       });
 
       // Fallback: enlaces directos si el tema no usa .result-item
@@ -917,7 +918,7 @@ module.exports = [
           const title = $(el).find("img").attr("alt") || $(el).text().trim();
           if (!title || title.length < 3 || isNavLink(title)) return;
           const isSerie = href.includes("/series/");
-          results.push({
+          results.push(annotateKindType({
             title,
             url: href.startsWith("http") ? href : BASE + href,
             year: "",
@@ -925,8 +926,8 @@ module.exports = [
             thumbnail: $(el).find("img").attr("src") || "",
             kind: isSerie ? "series" : "movie",
             category: isSerie ? "Serie" : "Película",
-            mediaType: isSerie ? "series" : "movie",
-          });
+            mediaType: isSerie ? "tv" : "movie",
+          }));
         });
       }
 

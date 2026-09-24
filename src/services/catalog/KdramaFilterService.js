@@ -83,7 +83,8 @@ class KdramaFilterService {
           backdrop: r.backdrop,
           year: r.year,
           score: r.score,
-          kind: 'series',
+          type: 'Series',
+          kind: 'Dorama',
           mediaType: 'tv',
           source: 'Catalog',
         }));

@@ -1,4 +1,5 @@
 const SOURCES = require('../../sources');
+const { annotateKindType } = require('../../utils/helpers');
 
 class SearchService {
   async searchAllSources(query, category, options = {}) {
@@ -22,7 +23,7 @@ class SearchService {
   async _searchSource(source, query, axios, cheerio, options = {}) {
     try {
       const results = await source.search(query, axios, cheerio, options);
-      return results.map(r => ({ ...r, source: source.name }));
+      return results.map(r => ({ ...r, ...annotateKindType(r), source: source.name }));
     } catch {
       return [];
     }

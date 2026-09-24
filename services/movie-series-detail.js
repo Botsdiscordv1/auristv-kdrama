@@ -1,7 +1,7 @@
 /**
- * services/anime-detail.js
+ * services/movie-series-detail.js
  * Fetches enriched metadata for movies/series (TMDB only).
- * Pruned for the movies/kdramas server partition.
+ * Used by /api/detail/movie on the kdramas server.
  */
 
 const axios = require("axios");
@@ -9,6 +9,7 @@ const { getTMDBKey } = require("../utils/config");
 const { getCatalogStore } = require("../src/database/CatalogStore");
 const { getDetailStore } = require("../src/database/DetailStore");
 const { redisGet, redisSet } = require("../src/cache/RedisCache");
+const { annotateKindType } = require("../utils/helpers");
 
 function normalizeTitleKey(s) {
   return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
@@ -41,8 +42,9 @@ async function fetchMovieSeriesDetail(item) {
 
   const effectiveYear = item.year || extractedYear;
   const categoryHint = (item.category || "").toLowerCase();
+  const kindHint = annotateKindType(item);
 
-  const cacheKey = `${searchTitle}:${effectiveYear || ""}:${categoryHint}`;
+  const cacheKey = `${searchTitle}:${effectiveYear || ""}:${categoryHint}:${kindHint.type}`;
   const cached = movieSeriesDetailCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < MOVIE_CACHE_TTL) {
     console.log(`[Kdramas Cache] HIT: "${cacheKey}"`);
@@ -52,7 +54,7 @@ async function fetchMovieSeriesDetail(item) {
   // SQLite L1/L2 persistente (igual que movies-series)
   const catalogStore = getCatalogStore();
   const detailStore = getDetailStore();
-  const resolvedId = detailStore.resolveCatalogId({ title: searchTitle, year: effectiveYear, tmdbId: item.tmdbId, mediaType: item.mediaType });
+  const resolvedId = detailStore.resolveCatalogId({ title: searchTitle, year: effectiveYear, tmdbId: item.tmdbId, mediaType: kindHint.mediaType });
   if (resolvedId) {
     const dbDetail = detailStore.getDetail(resolvedId);
     if (dbDetail && dbDetail.data && !dbDetail.isStale) {
@@ -92,8 +94,8 @@ async function fetchMovieSeriesDetail(item) {
 
     const urlLower = (item.url || "").toLowerCase();
     const qualityLower = (item.quality || "").toLowerCase();
-    const isSeriesUrl = urlLower.includes("/serie") || qualityLower.includes("serie");
-    const isMovieUrl = urlLower.includes("/pelicula") || qualityLower.includes("pelicula") || qualityLower.includes("movie");
+    const isSeriesUrl = kindHint.type === "Series" || urlLower.includes("/serie") || qualityLower.includes("serie");
+    const isMovieUrl = kindHint.type === "Movie" || urlLower.includes("/pelicula") || qualityLower.includes("pelicula") || qualityLower.includes("movie");
 
     const scoreMatch = (results, query) => {
       const qNorm = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -140,10 +142,14 @@ async function fetchMovieSeriesDetail(item) {
     const bestMovie = scoredMovies[0];
     const bestTV = scoredTV[0];
 
-    if (isSeriesUrl && bestTV?.score > 0) {
+    if (isMovieUrl && !isSeriesUrl && bestMovie?.score > 0) {
+      mediaType = "movie"; tmdbId = bestMovie.item.id;
+    } else if (isSeriesUrl && !isMovieUrl && bestTV?.score > 0) {
       mediaType = "tv"; tmdbId = bestTV.item.id;
     } else if (isMovieUrl && bestMovie?.score > 0) {
       mediaType = "movie"; tmdbId = bestMovie.item.id;
+    } else if (isSeriesUrl && bestTV?.score > 0) {
+      mediaType = "tv"; tmdbId = bestTV.item.id;
     } else if (bestMovie && bestTV) {
       if (bestMovie.score >= bestTV.score) { mediaType = "movie"; tmdbId = bestMovie.item.id; }
       else { mediaType = "tv"; tmdbId = bestTV.item.id; }
@@ -301,6 +307,8 @@ async function fetchMovieSeriesDetail(item) {
     rating, voteCount, releaseDate, runtime, episodeRuntime, genres: genresArr,
     productionCompanies, directors, cast, status, languages, seasons, totalSeasons,
     totalEpisodes, certification, platforms, trailerKey, trailerType, homepage, isMovie,
+    type: isMovie ? "Movie" : "Series",
+    kind: isMovie ? "movie_dorama" : "Dorama",
   };
 
   movieSeriesDetailCache.set(cacheKey, { data: result, timestamp: Date.now() });

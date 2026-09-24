@@ -1,8 +1,8 @@
-const { fetchMovieSeriesDetail } = require('../../services/anime-detail');
+const { fetchMovieSeriesDetail } = require('../../services/movie-series-detail');
 
 class MovieDetailService {
-  async getDetail({ title, year, metadataTitle, url, quality } = {}) {
-    return fetchMovieSeriesDetail({ title, year, metadataTitle, url, quality });
+  async getDetail({ title, year, metadataTitle, url, quality, type, kind, mediaType } = {}) {
+    return fetchMovieSeriesDetail({ title, year, metadataTitle, url, quality, type, kind, mediaType });
   }
 }
 
