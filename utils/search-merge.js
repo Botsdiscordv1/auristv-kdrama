@@ -93,7 +93,7 @@ function canonicalSearchKey(item, options = {}) {
     return `slug:${normalizedSlug}:s${season || 'base'}`;
   }
 
-  // Si no tiene slug (TMDB/AniList) o es muy corto, usamos el título normalizado
+  // Si no tiene slug (TMDB) o es muy corto, usamos el título normalizado
   // Esto permite que el metadato se fusione con el primer scraper que coincida en título
   const coreTitle = normalizeText(stripSeasonSuffix(sourceTitle));
   if (coreTitle) return `title:${coreTitle}:s${season || 'base'}`;
@@ -102,7 +102,7 @@ function canonicalSearchKey(item, options = {}) {
 }
 
 function isMetadataThumbnail(url = '') {
-  return /image\.tmdb|anilist\.co/i.test(url);
+  return /image\.tmdb/i.test(url);
 }
 
 function isSourceThumbnail(url = '') {

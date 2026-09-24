@@ -1,35 +1,19 @@
-const { AniListProvider } = require('../anilist/anilist.provider');
 const { TMDBProvider } = require('../tmdb/tmdb.provider');
-const { JikanProvider } = require('../jikan/jikan.provider');
-const { AnimeScheduleProvider } = require('../animeSchedule/animeSchedule.provider');
-const { AnimeThemesProvider } = require('../animeThemes/animeThemes.provider');
 const { AnimeAV1Provider } = require('../animeav1/animeav1.provider');
 const { AnimeFLVProvider } = require('../animeflv/animeflv.provider');
 const { JKAnimeProvider } = require('../jkanime/jkanime.provider');
 const { AniyaeProvider } = require('../aniyae/aniyae.provider');
 
 const DEFAULT_PRIORITIES = {
-  identity: ['AniList'],
-  searchMetadata: ['AniList'],
-  relations: ['AniList'],
-  recommendations: ['AniList'],
-  visuals: ['TMDB', 'AniList'],
+  visuals: ['TMDB'],
   episodeMetadata: ['TMDB'],
-  themes: ['AnimeThemes'],
-  schedule: ['AnimeSchedule', 'AniList'],
-  characters: ['Jikan', 'AniList'],
-  staff: ['Jikan'],
   search: ['AnimeAV1', 'AnimeFLV', 'JKAnime', 'Aniyae'],
   episodes: ['AnimeAV1', 'AnimeFLV', 'JKAnime', 'Aniyae'],
   streams: ['AnimeAV1', 'AnimeFLV', 'JKAnime', 'Aniyae'],
 };
 
 const PROVIDER_DEFS = [
-  { name: 'AniList', type: 'metadata', Class: AniListProvider, capabilities: ['identity', 'searchMetadata', 'relations', 'recommendations', 'visuals', 'schedule', 'characters'] },
   { name: 'TMDB', type: 'metadata', Class: TMDBProvider, capabilities: ['visuals', 'episodeMetadata'] },
-  { name: 'Jikan', type: 'metadata', Class: JikanProvider, capabilities: ['characters', 'staff'] },
-  { name: 'AnimeSchedule', type: 'metadata', Class: AnimeScheduleProvider, capabilities: ['schedule'] },
-  { name: 'AnimeThemes', type: 'metadata', Class: AnimeThemesProvider, capabilities: ['themes'] },
   { name: 'AnimeAV1', type: 'content', Class: AnimeAV1Provider, capabilities: ['search', 'episodes', 'streams'] },
   { name: 'AnimeFLV', type: 'content', Class: AnimeFLVProvider, capabilities: ['search', 'episodes', 'streams'] },
   { name: 'JKAnime', type: 'content', Class: JKAnimeProvider, capabilities: ['search', 'episodes', 'streams'] },

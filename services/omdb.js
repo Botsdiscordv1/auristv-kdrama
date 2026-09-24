@@ -7,7 +7,6 @@ const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
 const { OMDB_API_KEY, getTMDBKey, TMDB_API_KEY } = require("../utils/config");
-const { anilistQuery } = require("../utils/anilist-queue");
 const { fetchTmdbSeasonEpisodes } = require("../utils/tmdb-season");
 const { isGenericEpisodeName, splitSyl } = require("../utils/title-utils");
 
@@ -203,12 +202,7 @@ function buildCacheKey(title, season) {
 }
 
 async function resolveEnglishTitle(rawTitle) {
-  try {
-    const gql = `query ($search: String) { Media(search: $search, type: ANIME) { title { english romaji } } }`;
-    const searchStr = splitSyl(rawTitle);
-    const resp = await anilistQuery(gql, { search: searchStr });
-    return resp?.data?.data?.Media?.title?.english || resp?.data?.data?.Media?.title?.romaji || rawTitle;
-  } catch { return rawTitle; }
+  return rawTitle;
 }
 
 async function getSeasonEpisodes({ title, season = 1 }) {

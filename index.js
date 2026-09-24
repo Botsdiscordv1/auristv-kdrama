@@ -1060,11 +1060,8 @@ app.get("/api/health", async (req, res) => {
   try {
     const { toHealthDTO } = require("./src/dto/HealthDTO");
     const providers = [
-      { provider: "AniList", status: "ONLINE", responseTime: 0 },
       { provider: "TMDB", status: "ONLINE", responseTime: 0 },
-      { provider: "Jikan", status: "DEGRADED", responseTime: 0 },
-      { provider: "AnimeThemes", status: "ONLINE", responseTime: 0 },
-      { provider: "AnimeSchedule", status: "ONLINE", responseTime: 0 },
+      { provider: "OMDb", status: "ONLINE", responseTime: 0 },
     ];
     send(res, toHealthDTO(providers));
   } catch (err) {

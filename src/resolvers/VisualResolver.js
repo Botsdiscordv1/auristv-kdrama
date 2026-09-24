@@ -3,16 +3,16 @@ class VisualResolver {
     this.tmdb = tmdbProvider;
   }
 
-  resolvePoster(tmdbDetail, anilistDetail) {
-    return tmdbDetail?.poster || anilistDetail?.thumbnail || null;
+  resolvePoster(tmdbDetail, metaDetail) {
+    return tmdbDetail?.poster || metaDetail?.thumbnail || null;
   }
 
-  resolveBackdrop(tmdbDetail, anilistDetail) {
-    return tmdbDetail?.backdrop || anilistDetail?.banner || null;
+  resolveBackdrop(tmdbDetail, metaDetail) {
+    return tmdbDetail?.backdrop || metaDetail?.banner || null;
   }
 
-  resolveBanner(anilistDetail) {
-    return anilistDetail?.banner || null;
+  resolveBanner(metaDetail) {
+    return metaDetail?.banner || null;
   }
 
   resolveLogo(tmdbDetail) {
