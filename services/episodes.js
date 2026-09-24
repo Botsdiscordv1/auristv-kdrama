@@ -481,49 +481,94 @@ async function getEpisodes(url, source, options = {}) {
     }
     case "DoramasYT": {
       try {
-        const pageRes = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
-        const $ = cheerio.load(pageRes.data);
+        const pageRes = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000, validateStatus: (s) => s < 500 });
+        const pageHtml = typeof pageRes.data === "string" ? pageRes.data : "";
+        const $ = cheerio.load(pageHtml);
         const ajaxUrl = $(".caplist").attr("data-ajax");
         const token = $("meta[name='csrf-token']").attr("content");
-        if (!ajaxUrl || !token) throw new Error("No se encontró pagination AJAX o CSRF token");
-        const cookie = (pageRes.headers["set-cookie"] || []).map(c => c.split(";")[0]).join("; ");
-        const ajaxHeaders = {
-          ...BROWSER_HEADERS,
-          Cookie: cookie,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "X-Requested-With": "XMLHttpRequest",
-          Accept: "application/json, text/plain, */*",
-          Referer: url,
-        };
-        const body1 = new URLSearchParams();
-        body1.append("_token", token);
-        const r1 = await axios.post(ajaxUrl, body1, { headers: ajaxHeaders, timeout: 15000 });
-        const d1 = typeof r1.data === "string" ? JSON.parse(r1.data) : r1.data;
-        const paginateUrl = d1.paginate_url;
-        const perpage = parseInt(d1.perpage, 10) || 50;
-        const totalNums = Array.isArray(d1.eps) ? d1.eps.length : 0;
-        const pageCount = Math.max(1, Math.ceil(totalNums / perpage));
         const episodes = [];
-        for (let p = 1; p <= pageCount; p++) {
-          const body = new URLSearchParams();
-          body.append("_token", token);
-          body.append("p", String(p));
-          const r = await axios.post(paginateUrl, body, { headers: ajaxHeaders, timeout: 15000 });
-          const pageData = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
-          for (const cap of pageData.caps || []) {
-            const epNum = parseInt(cap.episodio, 10);
-            if (!epNum || !cap.url) continue;
-            const seasonNum = 1;
-            if (targetSeason && seasonNum !== targetSeason) continue;
-            episodes.push({
-              number: epNum,
-              season: seasonNum,
-              url: cap.url,
-              title: null,
-              thumbnail: cap.thumb || pageData.default || null,
-            });
+
+        // 1) AJAX oficial (puede fallar con Cloudflare 403 en datacenter)
+        if (ajaxUrl && token && pageRes.status === 200) {
+          try {
+            const cookie = (pageRes.headers["set-cookie"] || []).map((c) => c.split(";")[0]).join("; ");
+            const ajaxHeaders = {
+              ...BROWSER_HEADERS,
+              Cookie: cookie,
+              "Content-Type": "application/x-www-form-urlencoded",
+              "X-Requested-With": "XMLHttpRequest",
+              Accept: "application/json, text/plain, */*",
+              Referer: url,
+            };
+            const body1 = new URLSearchParams();
+            body1.append("_token", token);
+            const r1 = await axios.post(ajaxUrl, body1, { headers: ajaxHeaders, timeout: 15000, validateStatus: (s) => s < 500 });
+            const d1 = typeof r1.data === "string" ? JSON.parse(r1.data) : r1.data;
+            if (r1.status === 200 && d1 && d1.paginate_url) {
+              const perpage = parseInt(d1.perpage, 10) || 50;
+              const totalNums = Array.isArray(d1.eps) ? d1.eps.length : 0;
+              const pageCount = Math.max(1, Math.ceil(totalNums / perpage));
+              for (let p = 1; p <= pageCount; p++) {
+                const body = new URLSearchParams();
+                body.append("_token", token);
+                body.append("p", String(p));
+                const r = await axios.post(d1.paginate_url, body, { headers: ajaxHeaders, timeout: 15000, validateStatus: (s) => s < 500 });
+                if (r.status !== 200) break;
+                const pageData = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+                for (const cap of pageData.caps || []) {
+                  const epNum = parseInt(cap.episodio, 10);
+                  if (!epNum || !cap.url) continue;
+                  const seasonNum = 1;
+                  if (targetSeason && seasonNum !== targetSeason) continue;
+                  episodes.push({
+                    number: epNum,
+                    season: seasonNum,
+                    url: cap.url,
+                    title: null,
+                    thumbnail: cap.thumb || pageData.default || null,
+                  });
+                }
+              }
+            }
+          } catch (ajaxErr) {
+            console.warn(`[DoramasYT] AJAX failed, trying sequential probe: ${ajaxErr.message}`);
           }
         }
+
+        // 2) Fallback: sondeo secuencial /ver/{slug}-episodio-N (GET sí pasa Cloudflare)
+        if (episodes.length === 0) {
+          const verLink = pageHtml.match(/href="(https?:\/\/www\.doramasyt\.com\/ver\/[^"]+-episodio-1)"/);
+          let baseSlug = null;
+          if (verLink) {
+            baseSlug = verLink[1].replace(/^.*\/ver\//, "").replace(/-episodio-1$/, "");
+          } else {
+            const path = new URL(url).pathname.split("/").filter(Boolean);
+            baseSlug = (path[path.length - 1] || slug).replace(/-sub-espanol.*$/i, "").replace(/-latino.*$/i, "");
+          }
+          if (baseSlug) {
+            let consecutiveMiss = 0;
+            for (let n = 1; n <= 200 && consecutiveMiss < 2; n++) {
+              const epUrl = `https://www.doramasyt.com/ver/${baseSlug}-episodio-${n}`;
+              try {
+                const r = await axios.get(epUrl, { headers: BROWSER_HEADERS, timeout: 10000, validateStatus: (s) => true, maxRedirects: 5 });
+                const title = typeof r.data === "string" ? ((r.data.match(/<title>([^<]+)/) || [])[1] || "") : "";
+                const ok = r.status === 200 && !/404|no encontrada|not found/i.test(title) && /Cap[ií]tulo|Episodio/i.test(title);
+                if (ok) {
+                  consecutiveMiss = 0;
+                  const seasonNum = 1;
+                  if (!targetSeason || seasonNum === targetSeason) {
+                    episodes.push({ number: n, season: seasonNum, url: epUrl, title: null, thumbnail: null });
+                  }
+                } else {
+                  consecutiveMiss++;
+                }
+              } catch (_) {
+                consecutiveMiss++;
+              }
+            }
+          }
+        }
+
         episodes.sort((a, b) => a.season - b.season || a.number - b.number);
         if (episodes.length > 0) {
           result = { source, url, slug, total: episodes.length, episodes };
@@ -613,7 +658,18 @@ async function getEpisodes(url, source, options = {}) {
     }
     case "Pandrama": {
       try {
-        const { data } = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
+        let data = null;
+        try {
+          const res = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000, validateStatus: (s) => s < 500 });
+          if (res.status === 200 && typeof res.data === "string") data = res.data;
+          else console.warn(`[Pandrama] axios status ${res.status}, falling back to browser`);
+        } catch (axiosErr) {
+          console.warn(`[Pandrama] axios failed (${axiosErr.message}), falling back to browser`);
+        }
+        // Cloudflare bloquea IPs de datacenter: usar navegador stealth
+        if (!data) data = await fetchWithBrowser(url);
+        if (!data) throw new Error("No se pudo obtener la página de Pandrama");
+
         const marker = "window.bootstrapData = ";
         const s = data.indexOf(marker);
         if (s < 0) throw new Error("No se encontró bootstrapData");
