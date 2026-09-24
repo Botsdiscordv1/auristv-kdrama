@@ -740,9 +740,9 @@ async function getEpisodes(url, source, options = {}) {
       return { error: `Source "${source}" is not supported` };
   }
 
+  let resolvedTmdbId = tmdbId;
+  let resolvedSeason = season;
   if (result && !result.error && result.episodes && result.episodes.length > 0) {
-    let resolvedTmdbId = tmdbId;
-    let resolvedSeason = season;
 
     // En fast (time-to-play) se salta el enrich TMDB: es lo más caro del path
     // y el player no lo necesita. El frontend pide cast/relations aparte.
