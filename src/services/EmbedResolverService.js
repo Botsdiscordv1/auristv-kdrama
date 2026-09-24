@@ -7,7 +7,7 @@ const { ERROR_CODES } = require('../../stream-resolvers/core/resolver.types');
 // VPS de 1GB RAM: resolver embeds en serie multiplicaba el peor caso (N×25s) y
 // lanzarlos todos en paralelo dispararía el pico de memoria. Con un pool pequeño
 // (mapLimit) se acota coste y RAM manteniendo el tiempo de respuesta acotado.
-const TRACK_TIMEOUT_MS = 12000;
+const TRACK_TIMEOUT_MS = 15000;
 const TRACK_CONCURRENCY = 4;
 
 function waitTimeout(ms) {

@@ -34,6 +34,7 @@ function defaultResolverList() {
     new (require('../providers/vidara/vidara.resolver').VidaraResolver)(),
     new (require('../providers/barmonrey/barmonrey.resolver').BarmonreyResolver)(),
     new (require('../providers/serieslan/serieslan.resolver').SerieslanResolver)(),
+    new (require('../providers/primeload/primeload.resolver').PrimeloadResolver)(),
   ];
 }
 

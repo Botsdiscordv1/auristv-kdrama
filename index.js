@@ -734,6 +734,13 @@ app.get("/api/extract", async (req, res) => {
       }
       return u;
     };
+    const wrapTrack = (t) => {
+      const next = { ...t, url: wrapProxyUrl(t.url) };
+      if (Array.isArray(t.qualities) && t.qualities.length > 0) {
+        next.qualities = t.qualities.map((q) => ({ ...q, url: wrapProxyUrl(q.url) }));
+      }
+      return next;
+    };
 
     const cacheKey = `${source}:${url}`;
     const cached = extractCache.get(cacheKey);
@@ -741,7 +748,7 @@ app.get("/api/extract", async (req, res) => {
       const resData = { ...cached.result };
       resData.url = wrapProxyUrl(resData.url);
       if (resData.tracks && resData.tracks.length > 0) {
-        resData.tracks = resData.tracks.map(t => ({ ...t, url: wrapProxyUrl(t.url) }));
+        resData.tracks = resData.tracks.map(wrapTrack);
       }
       return res.json(resData);
     }
@@ -751,7 +758,10 @@ app.get("/api/extract", async (req, res) => {
 
     result.url = wrapProxyUrl(result.url);
     if (result.tracks && result.tracks.length > 0) {
-      result.tracks = result.tracks.map(t => ({ ...t, url: wrapProxyUrl(t.url) }));
+      result.tracks = result.tracks.map(wrapTrack);
+    }
+    if (Array.isArray(result.qualities) && result.qualities.length > 0) {
+      result.qualities = result.qualities.map((q) => ({ ...q, url: wrapProxyUrl(q.url) }));
     }
 
     extractCache.set(cacheKey, { result, timestamp: Date.now() });
@@ -793,6 +803,18 @@ app.get("/api/resolve-episode", async (req, res) => {
 // Fixes Zilla Networks sending 'Content-Type: text/html' on video segments
 // (which causes libmpv/ffmpeg to abort stream playback after ~21s).
 // Preserves #EXT-X-MAP so ffmpeg's HLS demuxer seeks natively without moov errors.
+// Primeload (primecdn) mints a per-request token via socket.io — handled here.
+
+const {
+  isPrimeloadCdnUrl,
+  authorizePrimeloadCdnUrl,
+} = require("./stream-resolvers/providers/primeload/primeload.session");
+
+async function authorizeHlsUpstream(targetUrl) {
+  if (!isPrimeloadCdnUrl(targetUrl)) return targetUrl;
+  const authed = await authorizePrimeloadCdnUrl(targetUrl);
+  return typeof authed === "string" ? authed : authed.url;
+}
 
 function resolveHLSUrl(targetUrl, baseUrl) {
   if (!targetUrl) return targetUrl;
@@ -809,10 +831,12 @@ app.get("/api/hls/stream.m3u8", async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).send("Missing url");
 
-    const { data: m3u8 } = await axios.get(url, {
+    const upstream = await authorizeHlsUpstream(url);
+    const { data: m3u8 } = await axios.get(upstream, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://animeav1.com/",
+        "Referer": isPrimeloadCdnUrl(upstream) ? "https://primeload.co/" : "https://animeav1.com/",
+        ...(isPrimeloadCdnUrl(upstream) ? { Origin: "https://primeload.co" } : {}),
       },
       timeout: 30000,
     });
@@ -869,13 +893,15 @@ app.get("/api/hls/segment", async (req, res) => {
 
     const headers = {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      "Referer": "https://animeav1.com/",
+      "Referer": isPrimeloadCdnUrl(url) ? "https://primeload.co/" : "https://animeav1.com/",
+      ...(isPrimeloadCdnUrl(url) ? { Origin: "https://primeload.co" } : {}),
     };
 
     const isInit = url.includes("init.html") || url.includes("init.mp4") || url.includes(".m4s");
     const contentType = isInit ? "video/mp4" : "video/mp2t";
 
-    const segRes = await axios.get(url, {
+    const upstream = await authorizeHlsUpstream(url);
+    const segRes = await axios.get(upstream, {
       headers,
       responseType: "arraybuffer", // Use arraybuffer for easier caching
       timeout: 30000,

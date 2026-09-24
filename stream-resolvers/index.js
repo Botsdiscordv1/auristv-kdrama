@@ -34,6 +34,7 @@ const { StreamHjResolver } = require('./providers/streamhj/streamhj.resolver');
 const { VidaraResolver } = require('./providers/vidara/vidara.resolver');
 const { BarmonreyResolver } = require('./providers/barmonrey/barmonrey.resolver');
 const { SerieslanResolver } = require('./providers/serieslan/serieslan.resolver');
+const { PrimeloadResolver } = require('./providers/primeload/primeload.resolver');
 
 const registry = new ResolverRegistry();
 
@@ -76,6 +77,7 @@ module.exports = {
     VidaraResolver,
     BarmonreyResolver,
     SerieslanResolver,
+    PrimeloadResolver,
     PlaymogoResolver,
     Embed69Resolver,
     HglinkResolver,

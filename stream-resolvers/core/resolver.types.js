@@ -38,6 +38,7 @@ const PROVIDER_IDS = Object.freeze({
   HGLINK: 'hglink',
   RAPIDVIDEO: 'rapidvideo',
   GNULAPLAYER: 'gnulaplayer',
+  PRIMELOAD: 'primeload',
 });
 
 const ERROR_CODES = Object.freeze({
