@@ -388,12 +388,281 @@ async function getEpisodes(url, source, options = {}) {
       }
       break;
     }
-    case "Tudorama":
-    case "DoramasYT":
-    case "DoramasMP4":
-    case "Pandrama":
-      result = { source, url, slug, total: 0, episodes: [], note: "Usa la URL directa del episodio en el extractor." };
+    case "Tudorama": {
+      try {
+        const { data } = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
+        const $ = cheerio.load(data);
+        const episodes = [];
+        const seen = new Set();
+
+        // 1) AJAX WStream (lista completa; el SSR solo trae las últimas 8)
+        try {
+          const $eps = $(".eps").first();
+          const ajaxBase = ($eps.attr("data-ajaxurl") || "https://tudorama.com/wp-admin/").replace(/\/+$/, "/");
+          const nonce = $eps.attr("data-nonce");
+          const postId = $eps.attr("data-tmdb-id");
+          const seasonAttr = $eps.attr("data-season-number") || "1";
+          const order = $eps.attr("data-order") || "DESC";
+          if (nonce && postId) {
+            const body = new URLSearchParams({
+              action: "corvus_get_episodes",
+              nonce,
+              post_id: postId,
+              season: seasonAttr,
+              results: "50",
+              offset: "0",
+              order,
+            });
+            const { data: ajaxRes } = await axios.post(ajaxBase + "admin-ajax.php", body, {
+              headers: {
+                ...BROWSER_HEADERS,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "X-Requested-With": "XMLHttpRequest",
+                Referer: url,
+                Origin: new URL(url).origin,
+              },
+              timeout: 15000,
+            });
+            const obj = typeof ajaxRes === "string" ? JSON.parse(ajaxRes) : ajaxRes;
+            const results = (obj && obj.data && obj.data.results) || [];
+            for (const ep of results) {
+              const epNum = parseInt(ep.episode_number, 10);
+              const seasonNum = parseInt(ep.season_number, 10) || 1;
+              if (!epNum || seen.has(seasonNum + "x" + epNum)) continue;
+              if (targetSeason && seasonNum !== targetSeason) continue;
+              seen.add(seasonNum + "x" + epNum);
+              episodes.push({
+                number: epNum,
+                season: seasonNum,
+                url: ep.permalink,
+                title: ep.name || ep.title || null,
+                description: ep.overview || null,
+                thumbnail: ep.episode_image || null,
+                airDate: ep.release_date || null,
+              });
+            }
+          }
+        } catch (ajaxErr) {
+          console.warn(`[Tudorama] AJAX episodes fallback: ${ajaxErr.message}`);
+        }
+
+        // 2) Fallback: HTML SSR (solo las últimas N)
+        if (episodes.length === 0) {
+          $("li.lep").each((_, el) => {
+            const $li = $(el);
+            const epNum = parseInt($li.attr("data-episode"), 10);
+            const seasonNum = parseInt($li.attr("data-season"), 10) || 1;
+            if (!epNum || seen.has(seasonNum + "x" + epNum)) return;
+            if (targetSeason && seasonNum !== targetSeason) return;
+            const href = $li.find('a[href*="/ver/"]').first().attr("href") || $li.find("a").first().attr("href") || "";
+            if (!href) return;
+            seen.add(seasonNum + "x" + epNum);
+            episodes.push({
+              number: epNum,
+              season: seasonNum,
+              url: href.startsWith("http") ? href : "https://tudorama.com" + href,
+              title: $li.find(".lep__title").first().text().trim() || null,
+              thumbnail: $li.find("img").first().attr("src") || $li.find("img").first().attr("data-src") || null,
+            });
+          });
+        }
+
+        episodes.sort((a, b) => a.season - b.season || a.number - b.number);
+        if (episodes.length > 0) {
+          result = { source, url, slug, total: episodes.length, episodes };
+        } else {
+          result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
+        }
+      } catch (err) {
+        console.warn(`[Tudorama] Episodes error: ${err.message}`);
+        result = { source, url, slug, total: 0, episodes: [], note: `Error: ${err.message}` };
+      }
       break;
+    }
+    case "DoramasYT": {
+      try {
+        const pageRes = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
+        const $ = cheerio.load(pageRes.data);
+        const ajaxUrl = $(".caplist").attr("data-ajax");
+        const token = $("meta[name='csrf-token']").attr("content");
+        if (!ajaxUrl || !token) throw new Error("No se encontró pagination AJAX o CSRF token");
+        const cookie = (pageRes.headers["set-cookie"] || []).map(c => c.split(";")[0]).join("; ");
+        const ajaxHeaders = {
+          ...BROWSER_HEADERS,
+          Cookie: cookie,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Requested-With": "XMLHttpRequest",
+          Accept: "application/json, text/plain, */*",
+          Referer: url,
+        };
+        const body1 = new URLSearchParams();
+        body1.append("_token", token);
+        const r1 = await axios.post(ajaxUrl, body1, { headers: ajaxHeaders, timeout: 15000 });
+        const d1 = typeof r1.data === "string" ? JSON.parse(r1.data) : r1.data;
+        const paginateUrl = d1.paginate_url;
+        const perpage = parseInt(d1.perpage, 10) || 50;
+        const totalNums = Array.isArray(d1.eps) ? d1.eps.length : 0;
+        const pageCount = Math.max(1, Math.ceil(totalNums / perpage));
+        const episodes = [];
+        for (let p = 1; p <= pageCount; p++) {
+          const body = new URLSearchParams();
+          body.append("_token", token);
+          body.append("p", String(p));
+          const r = await axios.post(paginateUrl, body, { headers: ajaxHeaders, timeout: 15000 });
+          const pageData = typeof r.data === "string" ? JSON.parse(r.data) : r.data;
+          for (const cap of pageData.caps || []) {
+            const epNum = parseInt(cap.episodio, 10);
+            if (!epNum || !cap.url) continue;
+            const seasonNum = 1;
+            if (targetSeason && seasonNum !== targetSeason) continue;
+            episodes.push({
+              number: epNum,
+              season: seasonNum,
+              url: cap.url,
+              title: null,
+              thumbnail: cap.thumb || pageData.default || null,
+            });
+          }
+        }
+        episodes.sort((a, b) => a.season - b.season || a.number - b.number);
+        if (episodes.length > 0) {
+          result = { source, url, slug, total: episodes.length, episodes };
+        } else {
+          result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
+        }
+      } catch (err) {
+        console.warn(`[DoramasYT] Episodes error: ${err.message}`);
+        result = { source, url, slug, total: 0, episodes: [], note: `Error: ${err.message}` };
+      }
+      break;
+    }
+    case "DoramasMP4": {
+      try {
+        const { data } = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
+        const origin = new URL(url).origin;
+        const episodes = [];
+        const seen = new Set();
+
+        // Preferimos initialEpisodes (JSON escapado dentro del RSC payload)
+        const key = '\\"initialEpisodes\\":[';
+        const kidx = data.indexOf(key);
+        if (kidx >= 0) {
+          const start = data.indexOf("[", kidx);
+          let depth = 0, end = -1;
+          for (let i = start; i < data.length; i++) {
+            if (data[i] === "[") depth++;
+            else if (data[i] === "]") { depth--; if (depth === 0) { end = i; break; } }
+          }
+          if (end > start) {
+            let raw = data.slice(start, end + 1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+            try {
+              const eps = JSON.parse(raw);
+              for (const ep of eps) {
+                const epNum = parseInt(ep.episode_number, 10);
+                const seasonNum = parseInt(ep.season_number, 10) || 1;
+                const href = ep.href || `/capitulos/${ep.slug}`;
+                if (!epNum || seen.has(seasonNum + "x" + epNum)) continue;
+                if (targetSeason && seasonNum !== targetSeason) continue;
+                seen.add(seasonNum + "x" + epNum);
+                episodes.push({
+                  number: epNum,
+                  season: seasonNum,
+                  url: href.startsWith("http") ? href : origin + href,
+                  title: ep.title || null,
+                  thumbnail: ep.stillUrl || null,
+                });
+              }
+            } catch (_) { /* fallback a regex */ }
+          }
+        }
+
+        // Fallback / complemento: enlaces literales href="/capitulos/..."
+        if (episodes.length === 0) {
+          const re = /href="(\/capitulos\/[^"]+)"/g;
+          let m;
+          while ((m = re.exec(data))) {
+            const href = m[1];
+            const sm = href.match(/-(\d+)x(\d+)/);
+            if (!sm) continue;
+            const seasonNum = parseInt(sm[1], 10);
+            const epNum = parseInt(sm[2], 10);
+            if (seen.has(seasonNum + "x" + epNum)) continue;
+            if (targetSeason && seasonNum !== targetSeason) continue;
+            seen.add(seasonNum + "x" + epNum);
+            episodes.push({
+              number: epNum,
+              season: seasonNum,
+              url: origin + href,
+              title: null,
+              thumbnail: null,
+            });
+          }
+        }
+
+        episodes.sort((a, b) => a.season - b.season || a.number - b.number);
+        if (episodes.length > 0) {
+          result = { source, url, slug, total: episodes.length, episodes };
+        } else {
+          result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
+        }
+      } catch (err) {
+        console.warn(`[DoramasMP4] Episodes error: ${err.message}`);
+        result = { source, url, slug, total: 0, episodes: [], note: `Error: ${err.message}` };
+      }
+      break;
+    }
+    case "Pandrama": {
+      try {
+        const { data } = await axios.get(url, { headers: BROWSER_HEADERS, timeout: 15000 });
+        const marker = "window.bootstrapData = ";
+        const s = data.indexOf(marker);
+        if (s < 0) throw new Error("No se encontró bootstrapData");
+        let depth = 0, i = data.indexOf("{", s), start = i, end = -1;
+        for (; i < data.length; i++) {
+          if (data[i] === "{") depth++;
+          else if (data[i] === "}") { depth--; if (depth === 0) { end = i; break; } }
+        }
+        if (end < 0) throw new Error("bootstrapData JSON incompleto");
+        const bd = JSON.parse(data.slice(start, end + 1));
+        const tp = bd.loaders && bd.loaders.titlePage;
+        if (!tp) throw new Error("No se encontró titlePage loader");
+        const origin = new URL(url).origin;
+        const titleId = tp.title && tp.title.id;
+        const titleSlug = tp.title && tp.title.slug;
+        const epsData = (tp.episodes && (Array.isArray(tp.episodes) ? tp.episodes : tp.episodes.data)) || [];
+        const episodes = [];
+        const seen = new Set();
+        for (const ep of epsData) {
+          const epNum = parseInt(ep.episode_number, 10);
+          const seasonNum = parseInt(ep.season_number, 10) || 1;
+          if (!epNum || seen.has(seasonNum + "x" + epNum)) continue;
+          if (targetSeason && seasonNum !== targetSeason) continue;
+          seen.add(seasonNum + "x" + epNum);
+          const epUrl = titleId && titleSlug
+            ? `${origin}/titulo/${titleId}/${titleSlug}/temporada/${seasonNum}/episodio/${epNum}`
+            : null;
+          episodes.push({
+            number: epNum,
+            season: seasonNum,
+            url: epUrl || url,
+            title: ep.name || null,
+            description: ep.description || null,
+            thumbnail: ep.poster || null,
+            airDate: ep.release_date ? ep.release_date.slice(0, 10) : null,
+          });
+        }
+        episodes.sort((a, b) => a.season - b.season || a.number - b.number);
+        if (episodes.length > 0) {
+          result = { source, url, slug, total: episodes.length, episodes };
+        } else {
+          result = { source, url, slug, total: 0, episodes: [], note: "No se encontraron episodios en la ficha." };
+        }
+      } catch (err) {
+        console.warn(`[Pandrama] Episodes error: ${err.message}`);
+        result = { source, url, slug, total: 0, episodes: [], note: `Error: ${err.message}` };
+      }
+      break;
+    }
     default:
       return { error: `Source "${source}" is not supported` };
   }
